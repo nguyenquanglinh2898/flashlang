@@ -47,15 +47,25 @@ Future<void> flashLangExactAlarmCallback(
   await service._initializeLocalNotificationsForBackground();
   await service.showRandomCardNotification();
 
-  final String? time = params['time'] as String?;
-  if (time == null || time.trim().isEmpty) {
+  final String? mode = params['mode'] as String?;
+  if (mode == NotificationScheduleMode.interval.name) {
+    final int? intervalMinutes = params['intervalMinutes'] as int?;
+    if (intervalMinutes != null && intervalMinutes > 0) {
+      await service._scheduleExactIntervalAlarm(
+        intervalMinutes,
+        forceNextInterval: true,
+      );
+    }
     return;
   }
 
-  await service._scheduleExactAlarmForTime(
-    time,
-    forceTomorrow: true,
-  );
+  final String? time = params['time'] as String?;
+  if (time != null && time.trim().isNotEmpty) {
+    await service._scheduleExactAlarmForTime(
+      time,
+      forceTomorrow: true,
+    );
+  }
 }
 
 @pragma('vm:entry-point')
@@ -130,21 +140,32 @@ class NotificationService {
     );
   }
 
-  Future<void> scheduleNotifications(List<String> pushTimes) async {
+  Future<void> scheduleNotifications(NotificationSettingsModel settings) async {
     await initialize();
-    final List<String> normalizedTimes = _normalizeAndSortTimes(pushTimes);
     await Workmanager().cancelAll();
+    await _localNotificationsPlugin.cancelAll();
 
     if (Platform.isAndroid) {
       await _cancelAllAndroidExactAlarms();
+    }
 
-      final bool canScheduleExact = await _canScheduleExactAlarms();
-      if (canScheduleExact) {
-        for (final String time in normalizedTimes) {
-          await _scheduleExactAlarmForTime(time);
-        }
+    if (settings.scheduleMode == NotificationScheduleMode.interval) {
+      final int intervalMinutes = settings.intervalMinutes ?? 60;
+      if (Platform.isAndroid && await _canScheduleExactAlarms()) {
+        await _scheduleExactIntervalAlarm(intervalMinutes);
         return;
       }
+
+      await _registerIntervalNotificationTask(intervalMinutes);
+      return;
+    }
+
+    final List<String> normalizedTimes = _normalizeAndSortTimes(settings.pushTimes);
+    if (Platform.isAndroid && await _canScheduleExactAlarms()) {
+      for (final String time in normalizedTimes) {
+        await _scheduleExactAlarmForTime(time);
+      }
+      return;
     }
 
     for (final String time in normalizedTimes) {
@@ -156,7 +177,7 @@ class NotificationService {
     await initialize();
     final NotificationSettingsModel settings =
         await DatabaseHelper.instance.getNotificationSettings();
-    await scheduleNotifications(settings.pushTimes);
+    await scheduleNotifications(settings);
   }
 
   Future<void> cancelAllScheduledNotifications() async {
@@ -200,7 +221,8 @@ class NotificationService {
   Future<void> showRandomCardNotification() async {
     await _initializeLocalNotificationsForBackground();
 
-    final CardModel? card = await DatabaseHelper.instance.getNextCardForNotification();
+    final CardModel? card =
+        await DatabaseHelper.instance.getNextCardForNotification();
     if (card == null || card.id == null) {
       return;
     }
@@ -210,7 +232,7 @@ class NotificationService {
 
     await _localNotificationsPlugin.show(
       _notificationIdForCard(card.id!),
-      card.word,
+      card.notificationTitle,
       card.meaning,
       details,
       payload: payload.toJsonString(),
@@ -247,7 +269,7 @@ class NotificationService {
 
   Future<void> _initializeLocalNotifications() async {
     const AndroidInitializationSettings androidInitializationSettings =
-        AndroidInitializationSettings('@drawable/ic_notification');
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const DarwinInitializationSettings iosInitializationSettings =
         DarwinInitializationSettings();
 
@@ -297,7 +319,7 @@ class NotificationService {
         _notificationChannelId,
         _notificationChannelName,
         channelDescription: _notificationChannelDescription,
-        icon: '@drawable/ic_notification',
+        icon: '@mipmap/ic_launcher',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -324,6 +346,23 @@ class NotificationService {
     );
   }
 
+  Future<void> _registerIntervalNotificationTask(int intervalMinutes) async {
+    await Workmanager().registerPeriodicTask(
+      'flashlang_notification_interval_$intervalMinutes',
+      flashLangNotificationTask,
+      frequency: Duration(minutes: intervalMinutes),
+      initialDelay: Duration(minutes: intervalMinutes),
+      existingWorkPolicy: ExistingWorkPolicy.replace,
+      inputData: <String, dynamic>{
+        'mode': NotificationScheduleMode.interval.name,
+        'intervalMinutes': intervalMinutes,
+      },
+      constraints: Constraints(
+        networkType: NetworkType.not_required,
+      ),
+    );
+  }
+
   Future<void> _scheduleExactAlarmForTime(
     String time, {
     bool forceTomorrow = false,
@@ -342,7 +381,34 @@ class NotificationService {
       wakeup: true,
       rescheduleOnReboot: true,
       params: <String, dynamic>{
+        'mode': NotificationScheduleMode.fixedTimes.name,
         'time': normalizedTime,
+      },
+    );
+  }
+
+  Future<void> _scheduleExactIntervalAlarm(
+    int intervalMinutes, {
+    bool forceNextInterval = false,
+  }) async {
+    if (intervalMinutes <= 0) {
+      return;
+    }
+
+    await AndroidAlarmManager.oneShotAt(
+      _nextRunForInterval(
+        intervalMinutes,
+        forceNextInterval: forceNextInterval,
+      ),
+      _alarmIdForInterval(intervalMinutes),
+      flashLangExactAlarmCallback,
+      exact: true,
+      allowWhileIdle: true,
+      wakeup: true,
+      rescheduleOnReboot: true,
+      params: <String, dynamic>{
+        'mode': NotificationScheduleMode.interval.name,
+        'intervalMinutes': intervalMinutes,
       },
     );
   }
@@ -371,9 +437,27 @@ class NotificationService {
     return nextRun;
   }
 
+  DateTime _nextRunForInterval(
+    int intervalMinutes, {
+    bool forceNextInterval = false,
+  }) {
+    final DateTime now = DateTime.now();
+    if (forceNextInterval) {
+      return now.add(Duration(minutes: intervalMinutes));
+    }
+
+    return now.add(Duration(minutes: intervalMinutes));
+  }
+
   Future<void> _cancelAllAndroidExactAlarms() async {
     for (int minutes = 0; minutes < 24 * 60; minutes++) {
       await AndroidAlarmManager.cancel(_androidAlarmIdOffset + minutes);
+    }
+
+    for (int intervalMinutes = 1; intervalMinutes <= 24 * 60; intervalMinutes++) {
+      await AndroidAlarmManager.cancel(
+        _alarmIdForInterval(intervalMinutes),
+      );
     }
   }
 
@@ -448,6 +532,10 @@ class NotificationService {
 
   int _alarmIdForTime(String time) {
     return _androidAlarmIdOffset + _timeToMinutes(time);
+  }
+
+  int _alarmIdForInterval(int intervalMinutes) {
+    return _androidAlarmIdOffset + (24 * 60) + intervalMinutes;
   }
 
   int _notificationIdForCard(int cardId) {

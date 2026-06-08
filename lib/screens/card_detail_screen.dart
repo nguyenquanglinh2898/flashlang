@@ -90,6 +90,12 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                         ),
                   ),
                 ],
+                if (card.hasPartOfSpeech) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Chip(
+                    label: Text(card.partOfSpeech!),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 Text(
                   'Meaning',

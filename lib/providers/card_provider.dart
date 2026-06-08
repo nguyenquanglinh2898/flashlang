@@ -79,6 +79,7 @@ class CardProvider extends ChangeNotifier {
 
   Future<int?> addCard({
     required String word,
+    String? partOfSpeech,
     String? phonetic,
     required String meaning,
     String? imagePath,
@@ -90,6 +91,7 @@ class CardProvider extends ChangeNotifier {
     try {
       final CardModel card = CardModel(
         word: word,
+        partOfSpeech: partOfSpeech,
         phonetic: phonetic,
         meaning: meaning,
         imagePath: imagePath,
@@ -110,6 +112,7 @@ class CardProvider extends ChangeNotifier {
   Future<bool> updateCard({
     required int cardId,
     required String word,
+    String? partOfSpeech,
     String? phonetic,
     required String meaning,
     String? imagePath,
@@ -129,6 +132,8 @@ class CardProvider extends ChangeNotifier {
 
       final CardModel updatedCard = existingCard.copyWith(
         word: word,
+        partOfSpeech: partOfSpeech,
+        clearPartOfSpeech: (partOfSpeech ?? '').trim().isEmpty,
         phonetic: phonetic,
         clearPhonetic: (phonetic ?? '').trim().isEmpty,
         meaning: meaning,
@@ -208,6 +213,7 @@ class CardProvider extends ChangeNotifier {
 
   Future<void> importCardRow({
     required String word,
+    String? partOfSpeech,
     String? phonetic,
     required String meaning,
     String? imagePath,
@@ -215,6 +221,7 @@ class CardProvider extends ChangeNotifier {
   }) async {
     await importCardRowWithResult(
       word: word,
+      partOfSpeech: partOfSpeech,
       phonetic: phonetic,
       meaning: meaning,
       imagePath: imagePath,
@@ -224,6 +231,7 @@ class CardProvider extends ChangeNotifier {
 
   Future<ImportedCardInsertResult> importCardRowWithResult({
     required String word,
+    String? partOfSpeech,
     String? phonetic,
     required String meaning,
     String? imagePath,
@@ -234,6 +242,7 @@ class CardProvider extends ChangeNotifier {
     try {
       final ImportedCardInsertResult result = await _databaseHelper.insertImportedCard(
         word: word,
+        partOfSpeech: partOfSpeech,
         phonetic: phonetic,
         meaning: meaning,
         imagePath: imagePath,

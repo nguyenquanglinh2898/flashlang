@@ -27,8 +27,25 @@ class AddEditCardScreen extends StatefulWidget {
 }
 
 class _AddEditCardScreenState extends State<AddEditCardScreen> {
+  static const List<String> _partOfSpeechOptions = <String>[
+    'noun',
+    'verb',
+    'adjective',
+    'adverb',
+    'pronoun',
+    'preposition',
+    'conjunction',
+    'interjection',
+    'phrasal verb',
+    'noun phrase',
+    'verb phrase',
+    'idiom',
+    'other',
+  ];
+
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _wordController = TextEditingController();
+  final TextEditingController _partOfSpeechController = TextEditingController();
   final TextEditingController _phoneticController = TextEditingController();
   final TextEditingController _meaningController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
@@ -36,6 +53,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
   bool _isSaving = false;
   bool _isLoadingInitialData = false;
   List<int> _selectedGroupIds = <int>[];
+  String? _selectedPartOfSpeech;
   String? _imagePath;
   DateTime? _createdAt;
   DateTime? _lastPushedAt;
@@ -56,6 +74,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
   @override
   void dispose() {
     _wordController.dispose();
+    _partOfSpeechController.dispose();
     _phoneticController.dispose();
     _meaningController.dispose();
     super.dispose();
@@ -88,6 +107,30 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                         return 'Word is required.';
                       }
                       return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _partOfSpeechOptions.contains(_selectedPartOfSpeech)
+                        ? _selectedPartOfSpeech
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Part of speech',
+                      hintText: 'Choose word type',
+                    ),
+                    items: _partOfSpeechOptions
+                        .map(
+                          (String option) => DropdownMenuItem<String>(
+                            value: option,
+                            child: Text(option),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (String? value) {
+                      setState(() {
+                        _selectedPartOfSpeech = value;
+                        _partOfSpeechController.text = value ?? '';
+                      });
                     },
                   ),
                   const SizedBox(height: 16),
@@ -228,6 +271,8 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
 
       setState(() {
         _wordController.text = card.word;
+        _partOfSpeechController.text = card.partOfSpeech ?? '';
+        _selectedPartOfSpeech = card.partOfSpeech;
         _phoneticController.text = card.phonetic ?? '';
         _meaningController.text = card.meaning;
         _imagePath = card.imagePath;
@@ -272,6 +317,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
         final bool success = await cardProvider.updateCard(
           cardId: widget.cardId!,
           word: _wordController.text.trim(),
+          partOfSpeech: _partOfSpeechController.text.trim(),
           phonetic: _phoneticController.text.trim(),
           meaning: _meaningController.text.trim(),
           imagePath: _imagePath,
@@ -291,6 +337,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
       } else {
         final int? cardId = await cardProvider.addCard(
           word: _wordController.text.trim(),
+          partOfSpeech: _partOfSpeechController.text.trim(),
           phonetic: _phoneticController.text.trim(),
           meaning: _meaningController.text.trim(),
           imagePath: _imagePath,

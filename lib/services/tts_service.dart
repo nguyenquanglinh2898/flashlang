@@ -19,10 +19,11 @@ class TtsService {
       return;
     }
 
-    await _flutterTts.setLanguage('en-US');
+    await _flutterTts.setLanguage('en-GB');
     await _flutterTts.setPitch(1.0);
-    await _flutterTts.setSpeechRate(0.45);
+    await _flutterTts.setSpeechRate(0.42);
     await _flutterTts.awaitSpeakCompletion(true);
+    await _selectBritishVoice();
 
     _flutterTts.setStartHandler(() {
       _isSpeaking = true;
@@ -41,6 +42,43 @@ class TtsService {
     });
 
     _isInitialized = true;
+  }
+
+  Future<void> _selectBritishVoice() async {
+    try {
+      final dynamic voices = await _flutterTts.getVoices;
+      if (voices is! List) {
+        return;
+      }
+
+      Map<String, String>? selectedVoice;
+      for (final dynamic voice in voices) {
+        if (voice is! Map) {
+          continue;
+        }
+
+        final String locale =
+            (voice['locale'] ?? voice['language'] ?? '').toString().toLowerCase();
+        final String name = (voice['name'] ?? '').toString().toLowerCase();
+        final bool isBritish =
+            locale.contains('en-gb') || locale.contains('gb') || name.contains('uk');
+        final bool isEnglish = locale.startsWith('en');
+
+        if (isBritish && isEnglish) {
+          selectedVoice = <String, String>{
+            'name': (voice['name'] ?? '').toString(),
+            'locale': (voice['locale'] ?? voice['language'] ?? '').toString(),
+          };
+          break;
+        }
+      }
+
+      if (selectedVoice != null) {
+        await _flutterTts.setVoice(selectedVoice);
+      }
+    } catch (_) {
+      // Keep default engine voice if the platform does not expose voice metadata.
+    }
   }
 
   Future<void> speak(String text) async {

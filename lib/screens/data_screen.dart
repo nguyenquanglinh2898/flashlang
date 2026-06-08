@@ -15,6 +15,10 @@ class DataScreen extends StatefulWidget {
 class _DataScreenState extends State<DataScreen> {
   bool _isProcessing = false;
 
+  String _formatLabel(ImportExportFormat format) {
+    return format == ImportExportFormat.csv ? 'CSV' : 'TXT';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -32,7 +36,7 @@ class _DataScreenState extends State<DataScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Import all cards from a CSV file, download a sample file, or export your entire vocabulary database.',
+            'Import all cards from CSV/TXT, download sample files, or export your entire vocabulary database.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 20),
@@ -43,13 +47,15 @@ class _DataScreenState extends State<DataScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'CSV columns',
+                    'Supported columns',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                   ),
                   const SizedBox(height: 8),
-                  const Text('word, phonetic, meaning, imagePath, groups'),
+                  const Text(
+                    'word, partOfSpeech, phonetic, meaning, imagePath, groups',
+                  ),
                   const SizedBox(height: 4),
                   const Text('Use ";" to separate multiple groups in one row.'),
                 ],
@@ -58,21 +64,39 @@ class _DataScreenState extends State<DataScreen> {
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: _isProcessing ? null : _importAllData,
+            onPressed: _isProcessing ? null : () => _importAllData(ImportExportFormat.csv),
             icon: const Icon(Icons.file_upload_outlined),
             label: const Text('Import CSV'),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: _isProcessing ? null : _downloadSampleCsv,
+            onPressed: _isProcessing ? null : () => _downloadSampleFile(ImportExportFormat.csv),
             icon: const Icon(Icons.download_outlined),
             label: const Text('Download Sample CSV'),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            onPressed: _isProcessing ? null : _exportAllData,
+            onPressed: _isProcessing ? null : () => _exportAllData(ImportExportFormat.csv),
             icon: const Icon(Icons.file_download_outlined),
             label: const Text('Export All Data'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            onPressed: _isProcessing ? null : () => _importAllData(ImportExportFormat.txt),
+            icon: const Icon(Icons.description_outlined),
+            label: const Text('Import TXT'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isProcessing ? null : () => _downloadSampleFile(ImportExportFormat.txt),
+            icon: const Icon(Icons.download_for_offline_outlined),
+            label: const Text('Download Sample TXT'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _isProcessing ? null : () => _exportAllData(ImportExportFormat.txt),
+            icon: const Icon(Icons.file_present_outlined),
+            label: const Text('Export All Data TXT'),
           ),
           const SizedBox(height: 20),
           if (_isProcessing)
@@ -97,13 +121,14 @@ class _DataScreenState extends State<DataScreen> {
     );
   }
 
-  Future<void> _importAllData() async {
+  Future<void> _importAllData(ImportExportFormat format) async {
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      final List<ImportedCardRow> rows = await CsvService.instance.pickAndParseCsv();
+      final List<ImportedCardRow> rows =
+          await CsvService.instance.pickAndParseFile(format);
       if (rows.isEmpty || !mounted) {
         return;
       }
@@ -121,6 +146,7 @@ class _DataScreenState extends State<DataScreen> {
 
         final result = await cardProvider.importCardRowWithResult(
           word: row.word,
+          partOfSpeech: row.partOfSpeech,
           phonetic: row.phonetic,
           meaning: row.meaning,
           imagePath: row.imagePath,
@@ -162,22 +188,24 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
-  Future<void> _downloadSampleCsv() async {
+  Future<void> _downloadSampleFile(ImportExportFormat format) async {
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      final String filePath = await CsvService.instance.createSampleCsvFile();
+      final String filePath = format == ImportExportFormat.csv
+          ? await CsvService.instance.createSampleCsvFile()
+          : await CsvService.instance.createSampleTxtFile();
       if (!mounted) {
         return;
       }
-      _showMessage('Sample CSV saved to: $filePath');
+      _showMessage('Sample ${_formatLabel(format)} saved to: $filePath');
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showMessage('Could not create sample CSV: $error');
+      _showMessage('Could not create sample ${_formatLabel(format)}: $error');
     } finally {
       if (mounted) {
         setState(() {
@@ -187,17 +215,19 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
-  Future<void> _exportAllData() async {
+  Future<void> _exportAllData(ImportExportFormat format) async {
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      final String filePath = await CsvService.instance.exportAllCardsToCsv();
+      final String filePath = format == ImportExportFormat.csv
+          ? await CsvService.instance.exportAllCardsToCsv()
+          : await CsvService.instance.exportAllCardsToTxt();
       if (!mounted) {
         return;
       }
-      _showMessage('CSV saved to: $filePath');
+      _showMessage('${_formatLabel(format)} saved to: $filePath');
     } catch (error) {
       if (!mounted) {
         return;

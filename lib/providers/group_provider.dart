@@ -107,6 +107,29 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  Future<GroupModel?> renameGroup(int groupId, String newName) async {
+    final String trimmedName = newName.trim();
+    if (trimmedName.isEmpty) {
+      _setError('Group name cannot be empty.');
+      return null;
+    }
+
+    _setLoading(true);
+    _clearError();
+
+    try {
+      final GroupModel? updatedGroup =
+          await _databaseHelper.renameGroup(groupId, trimmedName);
+      await _reloadCollections();
+      return updatedGroup;
+    } catch (error) {
+      _setError('Failed to rename group: $error');
+      return null;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   GroupModel? findGroupById(int groupId) {
     try {
       return _groups.firstWhere((GroupModel group) => group.id == groupId);

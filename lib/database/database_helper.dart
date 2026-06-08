@@ -11,7 +11,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const String _databaseName = 'flash_lang.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2;
 
   static const String cardGroupsTable = 'card_groups';
   static const String cardsTable = 'cards';
@@ -50,6 +50,7 @@ class DatabaseHelper {
         await db.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -66,6 +67,7 @@ class DatabaseHelper {
       CREATE TABLE $cardsTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         word TEXT NOT NULL,
+        partOfSpeech TEXT,
         phonetic TEXT,
         meaning TEXT NOT NULL,
         imagePath TEXT,
@@ -88,17 +90,44 @@ class DatabaseHelper {
       CREATE TABLE $notificationSettingsTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pushTimes TEXT NOT NULL,
-        pushCount INTEGER NOT NULL DEFAULT 8
+        pushCount INTEGER NOT NULL DEFAULT 8,
+        scheduleMode TEXT NOT NULL DEFAULT 'fixed_times',
+        intervalMinutes INTEGER
       )
     ''');
 
     await db.insert(
       notificationSettingsTable,
       <String, Object?>{
+        'id': 1,
         'pushTimes': jsonEncode(defaultPushTimes),
         'pushCount': defaultPushTimes.length,
+        'scheduleMode': NotificationScheduleMode.fixedTimes.name,
+        'intervalMinutes': null,
       },
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+        'ALTER TABLE $cardsTable ADD COLUMN partOfSpeech TEXT',
+      );
+      await db.execute(
+        "ALTER TABLE $notificationSettingsTable ADD COLUMN scheduleMode TEXT NOT NULL DEFAULT 'fixed_times'",
+      );
+      await db.execute(
+        'ALTER TABLE $notificationSettingsTable ADD COLUMN intervalMinutes INTEGER',
+      );
+      await db.update(
+        notificationSettingsTable,
+        <String, Object?>{
+          'scheduleMode': NotificationScheduleMode.fixedTimes.name,
+        },
+        where: 'scheduleMode IS NULL OR scheduleMode = ?',
+        whereArgs: <Object?>[''],
+      );
+    }
   }
 
   Future<void> close() async {
@@ -181,11 +210,62 @@ class DatabaseHelper {
 
   Future<int> deleteGroup(int groupId) async {
     final Database db = await database;
-    return db.delete(
+    return db.transaction<int>((Transaction txn) async {
+      final List<Map<String, Object?>> cardMaps = await txn.rawQuery('''
+        SELECT DISTINCT c.id
+        FROM $cardsTable c
+        INNER JOIN $cardGroupMappingTable m ON m.cardId = c.id
+        WHERE m.groupId = ?
+      ''', <Object?>[groupId]);
+
+      for (final Map<String, Object?> cardMap in cardMaps) {
+        await txn.delete(
+          cardsTable,
+          where: 'id = ?',
+          whereArgs: <Object?>[cardMap['id'] as int],
+        );
+      }
+
+      return txn.delete(
+        cardGroupsTable,
+        where: 'id = ?',
+        whereArgs: <Object?>[groupId],
+      );
+    });
+  }
+
+  Future<GroupModel?> renameGroup(int groupId, String newName) async {
+    final String trimmedName = newName.trim();
+    if (trimmedName.isEmpty) {
+      throw ArgumentError('Group name cannot be empty.');
+    }
+
+    final Database db = await database;
+    final List<Map<String, Object?>> existing = await db.query(
       cardGroupsTable,
+      where: 'LOWER(name) = ? AND id != ?',
+      whereArgs: <Object?>[trimmedName.toLowerCase(), groupId],
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty) {
+      throw StateError('A group with this name already exists.');
+    }
+
+    final int updatedRows = await db.update(
+      cardGroupsTable,
+      <String, Object?>{
+        'name': trimmedName,
+      },
       where: 'id = ?',
       whereArgs: <Object?>[groupId],
     );
+
+    if (updatedRows == 0) {
+      return null;
+    }
+
+    return getGroupById(groupId);
   }
 
   Future<int> insertCard(CardModel card, List<int> groupIds) async {
@@ -315,21 +395,45 @@ class DatabaseHelper {
     );
   }
 
-  Future<void> upsertNotificationSettings(List<String> pushTimes) async {
+  Future<void> upsertNotificationSettings({
+    required List<String> pushTimes,
+    required NotificationScheduleMode scheduleMode,
+    int? intervalMinutes,
+  }) async {
     final Database db = await database;
     final List<String> normalizedTimes = List<String>.from(pushTimes)
       ..sort((String a, String b) => a.compareTo(b));
 
-    await db.update(
+    final int updatedRows = await db.update(
       notificationSettingsTable,
       <String, Object?>{
         'pushTimes': jsonEncode(normalizedTimes),
         'pushCount': normalizedTimes.length,
+        'scheduleMode': scheduleMode.name,
+        'intervalMinutes': scheduleMode == NotificationScheduleMode.interval
+            ? intervalMinutes
+            : null,
       },
       where: 'id = ?',
       whereArgs: const <Object?>[1],
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    if (updatedRows == 0) {
+      await db.insert(
+        notificationSettingsTable,
+        <String, Object?>{
+          'id': 1,
+          'pushTimes': jsonEncode(normalizedTimes),
+          'pushCount': normalizedTimes.length,
+          'scheduleMode': scheduleMode.name,
+          'intervalMinutes': scheduleMode == NotificationScheduleMode.interval
+              ? intervalMinutes
+              : null,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
   }
 
   Future<NotificationSettingsModel> getNotificationSettings() async {
@@ -346,6 +450,8 @@ class DatabaseHelper {
           'id': 1,
           'pushTimes': jsonEncode(defaultPushTimes),
           'pushCount': defaultPushTimes.length,
+          'scheduleMode': NotificationScheduleMode.fixedTimes.name,
+          'intervalMinutes': null,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -354,6 +460,8 @@ class DatabaseHelper {
         id: 1,
         pushTimes: defaultPushTimes,
         pushCount: defaultPushTimes.length,
+        scheduleMode: NotificationScheduleMode.fixedTimes,
+        intervalMinutes: null,
       );
     }
 
@@ -405,6 +513,7 @@ class DatabaseHelper {
 
   Future<ImportedCardInsertResult> insertImportedCard({
     required String word,
+    String? partOfSpeech,
     String? phonetic,
     required String meaning,
     String? imagePath,
@@ -415,6 +524,8 @@ class DatabaseHelper {
     return db.transaction<ImportedCardInsertResult>((Transaction txn) async {
       final String normalizedWord = word.trim();
       final String normalizedMeaning = meaning.trim();
+      final String? normalizedPartOfSpeech =
+          _normalizeNullableString(partOfSpeech);
       final String? normalizedPhonetic = _normalizeNullableString(phonetic);
       final String? normalizedImagePath = _normalizeNullableString(imagePath);
       final List<String> normalizedGroupNames = groupNames
@@ -453,16 +564,28 @@ class DatabaseHelper {
         groupIds.add(groupId);
       }
 
-      final List<Map<String, Object?>> existingCards = await txn.query(
-        cardsTable,
-        where: 'LOWER(word) = ? AND LOWER(meaning) = ?',
-        whereArgs: <Object?>[
-          normalizedWord.toLowerCase(),
-          normalizedMeaning.toLowerCase(),
-        ],
-        orderBy: 'createdAt ASC, id ASC',
-        limit: 1,
-      );
+      final String groupPlaceholders =
+          List<String>.filled(groupIds.length, '?').join(', ');
+      final List<Map<String, Object?>> existingCards = await txn.rawQuery('''
+        SELECT DISTINCT c.id
+        FROM $cardsTable c
+        INNER JOIN $cardGroupMappingTable m ON m.cardId = c.id
+        WHERE LOWER(c.word) = ?
+          AND LOWER(c.meaning) = ?
+          AND (
+            (c.partOfSpeech IS NULL AND ? IS NULL)
+            OR LOWER(COALESCE(c.partOfSpeech, '')) = LOWER(COALESCE(?, ''))
+          )
+          AND m.groupId IN ($groupPlaceholders)
+        ORDER BY c.createdAt ASC, c.id ASC
+        LIMIT 1
+      ''', <Object?>[
+        normalizedWord.toLowerCase(),
+        normalizedMeaning.toLowerCase(),
+        normalizedPartOfSpeech,
+        normalizedPartOfSpeech,
+        ...groupIds,
+      ]);
 
       int cardId;
       bool insertedCard = false;
@@ -471,6 +594,7 @@ class DatabaseHelper {
       } else {
         final CardModel card = CardModel(
           word: normalizedWord,
+          partOfSpeech: normalizedPartOfSpeech,
           phonetic: normalizedPhonetic,
           meaning: normalizedMeaning,
           imagePath: normalizedImagePath,
@@ -514,6 +638,7 @@ class DatabaseHelper {
       SELECT
         c.id,
         c.word,
+        c.partOfSpeech,
         c.phonetic,
         c.meaning,
         c.imagePath,
@@ -536,6 +661,7 @@ class DatabaseHelper {
       SELECT
         c.id,
         c.word,
+        c.partOfSpeech,
         c.phonetic,
         c.meaning,
         c.imagePath,
@@ -565,17 +691,31 @@ class NotificationSettingsModel {
     required this.id,
     required this.pushTimes,
     required this.pushCount,
+    required this.scheduleMode,
+    this.intervalMinutes,
   });
 
   final int id;
   final List<String> pushTimes;
   final int pushCount;
+  final NotificationScheduleMode scheduleMode;
+  final int? intervalMinutes;
 
   factory NotificationSettingsModel.fromMap(Map<String, Object?> map) {
+    final String rawScheduleMode =
+        (map['scheduleMode'] as String?) ?? NotificationScheduleMode.fixedTimes.name;
+    final String normalizedScheduleMode = rawScheduleMode == 'fixed_times'
+        ? NotificationScheduleMode.fixedTimes.name
+        : rawScheduleMode;
     return NotificationSettingsModel(
       id: map['id'] as int,
       pushTimes: List<String>.from(jsonDecode(map['pushTimes'] as String) as List<dynamic>),
       pushCount: map['pushCount'] as int,
+      scheduleMode: NotificationScheduleMode.values.firstWhere(
+        (NotificationScheduleMode mode) => mode.name == normalizedScheduleMode,
+        orElse: () => NotificationScheduleMode.fixedTimes,
+      ),
+      intervalMinutes: map['intervalMinutes'] as int?,
     );
   }
 
@@ -584,8 +724,15 @@ class NotificationSettingsModel {
       'id': id,
       'pushTimes': jsonEncode(pushTimes),
       'pushCount': pushCount,
+      'scheduleMode': scheduleMode.name,
+      'intervalMinutes': intervalMinutes,
     };
   }
+}
+
+enum NotificationScheduleMode {
+  fixedTimes,
+  interval,
 }
 
 class GroupWithCount extends GroupModel {
@@ -612,6 +759,7 @@ class ExportableCardRow {
   const ExportableCardRow({
     required this.id,
     required this.word,
+    this.partOfSpeech,
     this.phonetic,
     required this.meaning,
     this.imagePath,
@@ -620,6 +768,7 @@ class ExportableCardRow {
 
   final int id;
   final String word;
+  final String? partOfSpeech;
   final String? phonetic;
   final String meaning;
   final String? imagePath;
@@ -629,6 +778,7 @@ class ExportableCardRow {
     return ExportableCardRow(
       id: map['id'] as int,
       word: map['word'] as String,
+      partOfSpeech: map['partOfSpeech'] as String?,
       phonetic: map['phonetic'] as String?,
       meaning: map['meaning'] as String,
       imagePath: map['imagePath'] as String?,
@@ -639,6 +789,7 @@ class ExportableCardRow {
   List<String> toCsvRow() {
     return <String>[
       word,
+      partOfSpeech ?? '',
       phonetic ?? '',
       meaning,
       imagePath ?? '',

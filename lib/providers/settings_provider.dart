@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 
 import '../database/database_helper.dart';
 
-typedef SettingsChangedCallback = Future<void> Function(List<String> pushTimes);
+typedef SettingsChangedCallback = Future<void> Function(
+  NotificationSettingsModel settings,
+);
 
 class SettingsProvider extends ChangeNotifier {
   SettingsProvider({
@@ -15,14 +17,97 @@ class SettingsProvider extends ChangeNotifier {
   final SettingsChangedCallback? _onSettingsChanged;
 
   List<String> _pushTimes = <String>[];
+  NotificationScheduleMode _scheduleMode = NotificationScheduleMode.fixedTimes;
+  int? _intervalMinutes;
   bool _isLoading = false;
   String? _errorMessage;
 
   List<String> get pushTimes => List<String>.unmodifiable(_pushTimes);
+  NotificationScheduleMode get scheduleMode => _scheduleMode;
+  int? get intervalMinutes => _intervalMinutes;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  int get pushCount => _pushTimes.length;
+  int get pushCount => _scheduleMode == NotificationScheduleMode.interval
+      ? 0
+      : _pushTimes.length;
   bool get hasPushTimes => _pushTimes.isNotEmpty;
+  bool get isIntervalMode => _scheduleMode == NotificationScheduleMode.interval;
+  bool get isFixedTimesMode =>
+      _scheduleMode == NotificationScheduleMode.fixedTimes;
+  DateTime? get nextScheduledNotificationAt {
+    final DateTime now = DateTime.now();
+
+    if (_scheduleMode == NotificationScheduleMode.interval) {
+      final int minutes = _intervalMinutes ?? 60;
+      return now.add(Duration(minutes: minutes));
+    }
+
+    if (_pushTimes.isEmpty) {
+      return null;
+    }
+
+    DateTime? nextRun;
+    for (final String time in _pushTimes) {
+      final List<String> parts = time.split(':');
+      if (parts.length != 2) {
+        continue;
+      }
+
+      final int hour = int.tryParse(parts[0]) ?? 0;
+      final int minute = int.tryParse(parts[1]) ?? 0;
+      DateTime candidate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        minute,
+      );
+
+      if (!candidate.isAfter(now)) {
+        candidate = candidate.add(const Duration(days: 1));
+      }
+
+      if (nextRun == null || candidate.isBefore(nextRun)) {
+        nextRun = candidate;
+      }
+    }
+
+    return nextRun;
+  }
+
+  String get nextScheduledNotificationLabel {
+    final DateTime? nextRun = nextScheduledNotificationAt;
+    if (nextRun == null) {
+      return 'Not scheduled';
+    }
+
+    final DateTime now = DateTime.now();
+    final bool isToday =
+        nextRun.year == now.year &&
+        nextRun.month == now.month &&
+        nextRun.day == now.day;
+    final DateTime tomorrow = now.add(const Duration(days: 1));
+    final bool isTomorrow =
+        nextRun.year == tomorrow.year &&
+        nextRun.month == tomorrow.month &&
+        nextRun.day == tomorrow.day;
+
+    final String hh = nextRun.hour.toString().padLeft(2, '0');
+    final String mm = nextRun.minute.toString().padLeft(2, '0');
+    final String time = '$hh:$mm';
+
+    if (isToday) {
+      return 'Today at $time';
+    }
+
+    if (isTomorrow) {
+      return 'Tomorrow at $time';
+    }
+
+    final String dd = nextRun.day.toString().padLeft(2, '0');
+    final String mo = nextRun.month.toString().padLeft(2, '0');
+    return '$dd/$mo at $time';
+  }
 
   Future<void> loadSettings() async {
     _setLoading(true);
@@ -32,6 +117,8 @@ class SettingsProvider extends ChangeNotifier {
       final NotificationSettingsModel settings =
           await _databaseHelper.getNotificationSettings();
       _pushTimes = _sortTimes(settings.pushTimes);
+      _scheduleMode = settings.scheduleMode;
+      _intervalMinutes = settings.intervalMinutes;
       notifyListeners();
     } catch (error) {
       _setError('Failed to load notification settings: $error');
@@ -59,7 +146,11 @@ class SettingsProvider extends ChangeNotifier {
       final List<String> updatedTimes = _sortTimes(
         <String>[..._pushTimes, normalizedTime],
       );
-      await _persistPushTimes(updatedTimes);
+      await _persistSettings(
+        pushTimes: updatedTimes,
+        scheduleMode: _scheduleMode,
+        intervalMinutes: _intervalMinutes,
+      );
       return true;
     } catch (error) {
       _setError('Failed to add push time: $error');
@@ -82,7 +173,11 @@ class SettingsProvider extends ChangeNotifier {
     try {
       final List<String> updatedTimes = List<String>.from(_pushTimes)
         ..remove(normalizedTime);
-      await _persistPushTimes(updatedTimes);
+      await _persistSettings(
+        pushTimes: updatedTimes,
+        scheduleMode: _scheduleMode,
+        intervalMinutes: _intervalMinutes,
+      );
       return true;
     } catch (error) {
       _setError('Failed to remove push time: $error');
@@ -105,7 +200,11 @@ class SettingsProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      await _persistPushTimes(normalizedTimes);
+      await _persistSettings(
+        pushTimes: normalizedTimes,
+        scheduleMode: _scheduleMode,
+        intervalMinutes: _intervalMinutes,
+      );
       return true;
     } catch (error) {
       _setError('Failed to update push times: $error');
@@ -132,15 +231,80 @@ class SettingsProvider extends ChangeNotifier {
     await loadSettings();
   }
 
-  Future<void> _persistPushTimes(List<String> times) async {
-    final List<String> sortedTimes = _sortTimes(times);
-    await _databaseHelper.upsertNotificationSettings(sortedTimes);
+  Future<bool> updateScheduleMode(NotificationScheduleMode mode) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      await _persistSettings(
+        pushTimes: _pushTimes,
+        scheduleMode: mode,
+        intervalMinutes: mode == NotificationScheduleMode.interval
+            ? (_intervalMinutes ?? 60)
+            : null,
+      );
+      return true;
+    } catch (error) {
+      _setError('Failed to update notification mode: $error');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> updateIntervalMinutes(int minutes) async {
+    if (minutes <= 0) {
+      _setError('Interval must be greater than 0 minutes.');
+      return false;
+    }
+
+    _setLoading(true);
+    _clearError();
+
+    try {
+      await _persistSettings(
+        pushTimes: _pushTimes,
+        scheduleMode: NotificationScheduleMode.interval,
+        intervalMinutes: minutes,
+      );
+      return true;
+    } catch (error) {
+      _setError('Failed to update interval: $error');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> _persistSettings({
+    required List<String> pushTimes,
+    required NotificationScheduleMode scheduleMode,
+    required int? intervalMinutes,
+  }) async {
+    final List<String> sortedTimes = _sortTimes(pushTimes);
+    await _databaseHelper.upsertNotificationSettings(
+      pushTimes: sortedTimes,
+      scheduleMode: scheduleMode,
+      intervalMinutes: intervalMinutes,
+    );
     _pushTimes = sortedTimes;
+    _scheduleMode = scheduleMode;
+    _intervalMinutes = scheduleMode == NotificationScheduleMode.interval
+        ? intervalMinutes
+        : null;
     notifyListeners();
 
     final SettingsChangedCallback? onSettingsChanged = _onSettingsChanged;
     if (onSettingsChanged != null) {
-      await onSettingsChanged(sortedTimes);
+      await onSettingsChanged(
+        NotificationSettingsModel(
+          id: 1,
+          pushTimes: _pushTimes,
+          pushCount: _pushTimes.length,
+          scheduleMode: _scheduleMode,
+          intervalMinutes: _intervalMinutes,
+        ),
+      );
     }
   }
 

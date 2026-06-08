@@ -25,6 +25,10 @@ class CardListScreen extends StatefulWidget {
 }
 
 class _CardListScreenState extends State<CardListScreen> {
+  String _formatLabel(ImportExportFormat format) {
+    return format == ImportExportFormat.csv ? 'CSV' : 'TXT';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -45,16 +49,28 @@ class _CardListScreenState extends State<CardListScreen> {
                 onSelected: (action) async {
                   switch (action) {
                     case _CardListMenuAction.importCsv:
-                      await _importCsv();
+                      await _importFile(ImportExportFormat.csv);
                       break;
                     case _CardListMenuAction.downloadSampleCsv:
-                      await _downloadSampleCsv();
+                      await _downloadSampleFile(ImportExportFormat.csv);
                       break;
                     case _CardListMenuAction.exportCsv:
-                      await _exportCsv();
+                      await _exportFile(ImportExportFormat.csv);
                       break;
                     case _CardListMenuAction.exportAllCsv:
-                      await _exportAllCsv();
+                      await _exportAllFile(ImportExportFormat.csv);
+                      break;
+                    case _CardListMenuAction.importTxt:
+                      await _importFile(ImportExportFormat.txt);
+                      break;
+                    case _CardListMenuAction.downloadSampleTxt:
+                      await _downloadSampleFile(ImportExportFormat.txt);
+                      break;
+                    case _CardListMenuAction.exportTxt:
+                      await _exportFile(ImportExportFormat.txt);
+                      break;
+                    case _CardListMenuAction.exportAllTxt:
+                      await _exportAllFile(ImportExportFormat.txt);
                       break;
                   }
                 },
@@ -75,6 +91,22 @@ class _CardListScreenState extends State<CardListScreen> {
                   PopupMenuItem<_CardListMenuAction>(
                     value: _CardListMenuAction.exportAllCsv,
                     child: Text('Export All Cards'),
+                  ),
+                  PopupMenuItem<_CardListMenuAction>(
+                    value: _CardListMenuAction.importTxt,
+                    child: Text('Import TXT'),
+                  ),
+                  PopupMenuItem<_CardListMenuAction>(
+                    value: _CardListMenuAction.downloadSampleTxt,
+                    child: Text('Download Sample TXT'),
+                  ),
+                  PopupMenuItem<_CardListMenuAction>(
+                    value: _CardListMenuAction.exportTxt,
+                    child: Text('Export This Group TXT'),
+                  ),
+                  PopupMenuItem<_CardListMenuAction>(
+                    value: _CardListMenuAction.exportAllTxt,
+                    child: Text('Export All Cards TXT'),
                   ),
                 ],
               ),
@@ -195,9 +227,10 @@ class _CardListScreenState extends State<CardListScreen> {
     );
   }
 
-  Future<void> _importCsv() async {
+  Future<void> _importFile(ImportExportFormat format) async {
     try {
-      final List<ImportedCardRow> rows = await CsvService.instance.pickAndParseCsv();
+      final List<ImportedCardRow> rows =
+          await CsvService.instance.pickAndParseFile(format);
       if (rows.isEmpty || !mounted) {
         return;
       }
@@ -218,6 +251,7 @@ class _CardListScreenState extends State<CardListScreen> {
             : row.groupNames;
         final result = await cardProvider.importCardRowWithResult(
           word: row.word,
+          partOfSpeech: row.partOfSpeech,
           phonetic: row.phonetic,
           meaning: row.meaning,
           imagePath: row.imagePath,
@@ -254,16 +288,21 @@ class _CardListScreenState extends State<CardListScreen> {
     }
   }
 
-  Future<void> _exportCsv() async {
+  Future<void> _exportFile(ImportExportFormat format) async {
     try {
-      final String filePath = await CsvService.instance.exportGroupToCsv(
-        groupId: widget.groupId,
-        groupName: widget.groupName,
-      );
+      final String filePath = format == ImportExportFormat.csv
+          ? await CsvService.instance.exportGroupToCsv(
+              groupId: widget.groupId,
+              groupName: widget.groupName,
+            )
+          : await CsvService.instance.exportGroupToTxt(
+              groupId: widget.groupId,
+              groupName: widget.groupName,
+            );
       if (!mounted) {
         return;
       }
-      _showMessage('CSV saved to: $filePath');
+      _showMessage('${_formatLabel(format)} saved to: $filePath');
     } catch (error) {
       if (!mounted) {
         return;
@@ -272,13 +311,15 @@ class _CardListScreenState extends State<CardListScreen> {
     }
   }
 
-  Future<void> _exportAllCsv() async {
+  Future<void> _exportAllFile(ImportExportFormat format) async {
     try {
-      final String filePath = await CsvService.instance.exportAllCardsToCsv();
+      final String filePath = format == ImportExportFormat.csv
+          ? await CsvService.instance.exportAllCardsToCsv()
+          : await CsvService.instance.exportAllCardsToTxt();
       if (!mounted) {
         return;
       }
-      _showMessage('CSV saved to: $filePath');
+      _showMessage('${_formatLabel(format)} saved to: $filePath');
     } catch (error) {
       if (!mounted) {
         return;
@@ -287,13 +328,15 @@ class _CardListScreenState extends State<CardListScreen> {
     }
   }
 
-  Future<void> _downloadSampleCsv() async {
+  Future<void> _downloadSampleFile(ImportExportFormat format) async {
     try {
-      final String filePath = await CsvService.instance.createSampleCsvFile();
+      final String filePath = format == ImportExportFormat.csv
+          ? await CsvService.instance.createSampleCsvFile()
+          : await CsvService.instance.createSampleTxtFile();
       if (!mounted) {
         return;
       }
-      _showMessage('Sample CSV saved to: $filePath');
+      _showMessage('Sample ${_formatLabel(format)} saved to: $filePath');
     } catch (error) {
       if (!mounted) {
         return;
@@ -334,6 +377,10 @@ enum _CardListMenuAction {
   downloadSampleCsv,
   exportCsv,
   exportAllCsv,
+  importTxt,
+  downloadSampleTxt,
+  exportTxt,
+  exportAllTxt,
 }
 
 class _CardListStatusView extends StatelessWidget {

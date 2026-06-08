@@ -2,6 +2,7 @@ class CardModel {
   const CardModel({
     this.id,
     required this.word,
+    this.partOfSpeech,
     this.phonetic,
     required this.meaning,
     this.imagePath,
@@ -11,6 +12,7 @@ class CardModel {
 
   final int? id;
   final String word;
+  final String? partOfSpeech;
   final String? phonetic;
   final String meaning;
   final String? imagePath;
@@ -21,6 +23,7 @@ class CardModel {
     return CardModel(
       id: map['id'] as int?,
       word: map['word'] as String,
+      partOfSpeech: map['partOfSpeech'] as String?,
       phonetic: map['phonetic'] as String?,
       meaning: map['meaning'] as String,
       imagePath: map['imagePath'] as String?,
@@ -35,6 +38,7 @@ class CardModel {
     return <String, Object?>{
       'id': id,
       'word': word.trim(),
+      'partOfSpeech': _normalizeNullableString(partOfSpeech),
       'phonetic': _normalizeNullableString(phonetic),
       'meaning': meaning.trim(),
       'imagePath': _normalizeNullableString(imagePath),
@@ -46,6 +50,8 @@ class CardModel {
   CardModel copyWith({
     int? id,
     String? word,
+    String? partOfSpeech,
+    bool clearPartOfSpeech = false,
     String? phonetic,
     bool clearPhonetic = false,
     String? meaning,
@@ -58,6 +64,7 @@ class CardModel {
     return CardModel(
       id: id ?? this.id,
       word: word ?? this.word,
+      partOfSpeech: clearPartOfSpeech ? null : (partOfSpeech ?? this.partOfSpeech),
       phonetic: clearPhonetic ? null : (phonetic ?? this.phonetic),
       meaning: meaning ?? this.meaning,
       imagePath: clearImagePath ? null : (imagePath ?? this.imagePath),
@@ -69,10 +76,46 @@ class CardModel {
   }
 
   bool get hasPhonetic => phonetic != null && phonetic!.trim().isNotEmpty;
+  bool get hasPartOfSpeech =>
+      partOfSpeech != null && partOfSpeech!.trim().isNotEmpty;
 
   bool get hasImage => imagePath != null && imagePath!.trim().isNotEmpty;
 
+  String get notificationTitle {
+    final String? abbreviation = _partOfSpeechAbbreviation(partOfSpeech);
+    if (abbreviation == null) {
+      return word;
+    }
+
+    return '$word ($abbreviation)';
+  }
+
   String get notificationBody => '$word: $meaning';
+
+  String? _partOfSpeechAbbreviation(String? value) {
+    final String normalized = value?.trim().toLowerCase() ?? '';
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    const Map<String, String> abbreviations = <String, String>{
+      'noun': 'n',
+      'verb': 'v',
+      'adjective': 'adj',
+      'adverb': 'adv',
+      'pronoun': 'pron',
+      'preposition': 'prep',
+      'conjunction': 'conj',
+      'interjection': 'int',
+      'phrasal verb': 'phr v',
+      'noun phrase': 'n phr',
+      'verb phrase': 'v phr',
+      'idiom': 'idm',
+      'other': 'other',
+    };
+
+    return abbreviations[normalized] ?? value?.trim();
+  }
 
   String? _normalizeNullableString(String? value) {
     if (value == null) {
@@ -97,6 +140,7 @@ class CardModel {
     return other is CardModel &&
         other.id == id &&
         other.word == word &&
+        other.partOfSpeech == partOfSpeech &&
         other.phonetic == phonetic &&
         other.meaning == meaning &&
         other.imagePath == imagePath &&
@@ -108,6 +152,7 @@ class CardModel {
   int get hashCode => Object.hash(
         id,
         word,
+        partOfSpeech,
         phonetic,
         meaning,
         imagePath,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/group_model.dart';
 import '../providers/group_provider.dart';
 import '../widgets/group_tile.dart';
 import 'card_list_screen.dart';
@@ -151,6 +152,8 @@ class _HomeGroupsView extends StatelessWidget {
                     final group = groupProvider.groupsWithCount[index];
                     return GroupTile(
                       group: group,
+                      onEdit: () =>
+                          _showRenameGroupDialog(context, group.id, group.name),
                       onDelete: () => _confirmDeleteGroup(context, group.id, group.name),
                       onTap: () async {
                         await Navigator.of(context).push(
@@ -236,10 +239,57 @@ class _HomeGroupsView extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _showRenameGroupDialog(
+    BuildContext context,
+    int? groupId,
+    String currentName,
+  ) async {
+    if (groupId == null) {
+      return;
+    }
+
+    final String? updatedName = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) => _CreateGroupDialog(
+        title: 'Rename Group',
+        initialValue: currentName,
+      ),
+    );
+
+    if (!context.mounted || updatedName == null || updatedName.trim().isEmpty) {
+      return;
+    }
+
+    final GroupProvider groupProvider = context.read<GroupProvider>();
+    final GroupModel? group = await groupProvider.renameGroup(groupId, updatedName);
+    if (!context.mounted) {
+      return;
+    }
+
+    if (group == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(groupProvider.errorMessage ?? 'Unable to rename group.'),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Group updated.')),
+    );
+  }
 }
 
 class _CreateGroupDialog extends StatefulWidget {
-  const _CreateGroupDialog();
+  const _CreateGroupDialog({
+    this.title = 'Create Group',
+    this.initialValue = '',
+  });
+
+  final String title;
+  final String initialValue;
 
   @override
   State<_CreateGroupDialog> createState() => _CreateGroupDialogState();
@@ -251,7 +301,7 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
+    _controller = TextEditingController(text: widget.initialValue);
   }
 
   @override
@@ -263,7 +313,7 @@ class _CreateGroupDialogState extends State<_CreateGroupDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Create Group'),
+      title: Text(widget.title),
       content: TextField(
         controller: _controller,
         autofocus: true,

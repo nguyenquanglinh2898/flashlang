@@ -8,11 +8,13 @@ class GroupTile extends StatelessWidget {
     required this.group,
     required this.onTap,
     required this.onDelete,
+    required this.onEdit,
   });
 
   final GroupWithCount group;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -43,11 +45,24 @@ class GroupTile extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: onDelete,
-                    tooltip: 'Delete group',
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    visualDensity: VisualDensity.compact,
+                  PopupMenuButton<String>(
+                    onSelected: (String value) {
+                      if (value == 'edit') {
+                        onEdit();
+                        return;
+                      }
+                      onDelete();
+                    },
+                    itemBuilder: (_) => const <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(
+                        value: 'edit',
+                        child: Text('Rename'),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: Text('Delete'),
+                      ),
+                    ],
                   ),
                 ],
               ),

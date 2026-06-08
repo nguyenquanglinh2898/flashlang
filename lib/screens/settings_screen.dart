@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../database/database_helper.dart';
 import '../providers/settings_provider.dart';
 import '../services/notification_service.dart';
 
@@ -52,25 +53,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 20),
+                SegmentedButton<NotificationScheduleMode>(
+                  segments:
+                      const <ButtonSegment<NotificationScheduleMode>>[
+                    ButtonSegment<NotificationScheduleMode>(
+                      value: NotificationScheduleMode.fixedTimes,
+                      label: Text('Specific Times'),
+                      icon: Icon(Icons.schedule_rounded),
+                    ),
+                    ButtonSegment<NotificationScheduleMode>(
+                      value: NotificationScheduleMode.interval,
+                      label: Text('Every N Minutes'),
+                      icon: Icon(Icons.repeat_rounded),
+                    ),
+                  ],
+                  selected: <NotificationScheduleMode>{
+                    settingsProvider.scheduleMode,
+                  },
+                  onSelectionChanged: settingsProvider.isLoading
+                      ? null
+                      : (Set<NotificationScheduleMode> selection) {
+                          _changeMode(selection.first);
+                        },
+                ),
+                const SizedBox(height: 20),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.notifications_active_outlined),
-                    title: const Text('Push count per day'),
-                    subtitle: const Text('Automatically matches the number of scheduled times'),
+                    title: Text(
+                      settingsProvider.isIntervalMode
+                          ? 'Notification mode'
+                          : 'Push count per day',
+                    ),
+                    subtitle: Text(
+                      settingsProvider.isIntervalMode
+                          ? 'Notification repeats every ${settingsProvider.intervalMinutes ?? 60} minute(s)'
+                          : 'Automatically matches the number of scheduled times',
+                    ),
                     trailing: Text(
-                      '${settingsProvider.pushCount}',
+                      settingsProvider.isIntervalMode
+                          ? '${settingsProvider.intervalMinutes ?? 60}m'
+                          : '${settingsProvider.pushCount}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: settingsProvider.isLoading ? null : _pickAndAddTime,
-                  icon: const Icon(Icons.add_alarm_rounded),
-                  label: const Text('Add Time'),
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.update_rounded),
+                    title: const Text('Next notification'),
+                    subtitle: Text(settingsProvider.nextScheduledNotificationLabel),
+                  ),
                 ),
+                const SizedBox(height: 20),
+                if (settingsProvider.isFixedTimesMode)
+                  FilledButton.icon(
+                    onPressed: settingsProvider.isLoading ? null : _pickAndAddTime,
+                    icon: const Icon(Icons.add_alarm_rounded),
+                    label: const Text('Add Time'),
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: settingsProvider.isLoading ? null : _editInterval,
+                    icon: const Icon(Icons.timer_outlined),
+                    label: const Text('Set Interval'),
+                  ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed:
@@ -79,7 +129,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   label: const Text('Send Test Notification'),
                 ),
                 const SizedBox(height: 20),
-                if (settingsProvider.isLoading && settingsProvider.pushTimes.isEmpty)
+                if (settingsProvider.isIntervalMode) ...<Widget>[
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.timer_outlined),
+                      title: const Text('Interval'),
+                      subtitle: Text(
+                        'Send a notification every ${settingsProvider.intervalMinutes ?? 60} minute(s).',
+                      ),
+                      onTap: settingsProvider.isLoading ? null : _editInterval,
+                    ),
+                  ),
+                ] else if (settingsProvider.isLoading &&
+                    settingsProvider.pushTimes.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 40),
                     child: Center(child: CircularProgressIndicator()),
@@ -168,6 +230,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _changeMode(NotificationScheduleMode mode) async {
+    final SettingsProvider settingsProvider = context.read<SettingsProvider>();
+    final bool success = await settingsProvider.updateScheduleMode(mode);
+    if (!mounted || success) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          settingsProvider.errorMessage ?? 'Failed to update mode.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editInterval() async {
+    final SettingsProvider settingsProvider = context.read<SettingsProvider>();
+    final TextEditingController controller = TextEditingController(
+      text: '${settingsProvider.intervalMinutes ?? 60}',
+    );
+
+    final int? value = await showDialog<int>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Notification Interval'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Minutes',
+              hintText: 'Example: 60',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(int.tryParse(controller.text.trim())),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || value == null) {
+      return;
+    }
+
+    final bool success = await settingsProvider.updateIntervalMinutes(value);
+    if (!mounted || success) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          settingsProvider.errorMessage ?? 'Failed to update interval.',
+        ),
+      ),
+    );
   }
 
   Future<void> _pickAndAddTime() async {
