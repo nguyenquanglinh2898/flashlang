@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../database/database_helper.dart';
 import '../models/card_model.dart';
 import '../models/group_model.dart';
+import '../services/wear_sync_service.dart';
 
 class CardProvider extends ChangeNotifier {
   CardProvider({DatabaseHelper? databaseHelper})
@@ -99,6 +100,7 @@ class CardProvider extends ChangeNotifier {
       );
 
       final int cardId = await _databaseHelper.insertCard(card, groupIds);
+      await WearSyncService.instance.syncFromDatabase();
       await _reloadActiveCollection();
       return cardId;
     } catch (error) {
@@ -144,6 +146,7 @@ class CardProvider extends ChangeNotifier {
       );
 
       await _databaseHelper.updateCard(updatedCard, groupIds);
+      await WearSyncService.instance.syncFromDatabase();
       await _reloadActiveCollection();
 
       return true;
@@ -161,6 +164,7 @@ class CardProvider extends ChangeNotifier {
 
     try {
       await _databaseHelper.deleteCard(cardId);
+      await WearSyncService.instance.syncFromDatabase();
       _cards = _cards.where((CardModel card) => card.id != cardId).toList();
 
       notifyListeners();
@@ -249,6 +253,7 @@ class CardProvider extends ChangeNotifier {
         groupNames: groupNames,
       );
       if (result.isInserted) {
+        await WearSyncService.instance.syncFromDatabase();
         await _reloadActiveCollection();
       }
       return result;

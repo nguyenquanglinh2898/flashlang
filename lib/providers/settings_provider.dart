@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../database/database_helper.dart';
+import '../services/wear_sync_service.dart';
 
 typedef SettingsChangedCallback = Future<void> Function(
   NotificationSettingsModel settings,
@@ -306,6 +307,8 @@ class SettingsProvider extends ChangeNotifier {
         ),
       );
     }
+
+    await WearSyncService.instance.syncFromDatabase();
   }
 
   List<String> _sortTimes(List<String> times) {

@@ -10,6 +10,7 @@ import 'package:workmanager/workmanager.dart';
 
 import '../database/database_helper.dart';
 import '../models/card_model.dart';
+import 'wear_sync_service.dart';
 
 const String flashLangNotificationTask = 'flashlang_daily_notification_task';
 const String _notificationChannelId = 'flashlang_daily_cards';
@@ -236,6 +237,12 @@ class NotificationService {
       card.meaning,
       details,
       payload: payload.toJsonString(),
+    );
+
+    await WearSyncService.instance.pushCardNotification(
+      cardId: card.id!,
+      title: card.notificationTitle,
+      meaning: card.meaning,
     );
 
     await DatabaseHelper.instance.updateCardLastPushedAt(card.id!, DateTime.now());

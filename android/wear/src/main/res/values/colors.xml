@@ -1,0 +1,7 @@
+<resources>
+    <color name="flash_blue">#2F80ED</color>
+    <color name="flash_blue_dark">#1F5FA8</color>
+    <color name="flash_surface">#0F172A</color>
+    <color name="flash_on_surface">#FFFFFF</color>
+    <color name="flash_surface_variant">#172036</color>
+</resources>

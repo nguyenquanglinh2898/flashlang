@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../database/database_helper.dart';
 import '../models/group_model.dart';
+import '../services/wear_sync_service.dart';
 
 class GroupProvider extends ChangeNotifier {
   GroupProvider({DatabaseHelper? databaseHelper})
@@ -81,6 +82,7 @@ class GroupProvider extends ChangeNotifier {
 
     try {
       final GroupModel group = await _databaseHelper.createGroupIfNotExists(trimmedName);
+      await WearSyncService.instance.syncFromDatabase();
       await _reloadCollections();
       return group;
     } catch (error) {
@@ -97,6 +99,7 @@ class GroupProvider extends ChangeNotifier {
 
     try {
       await _databaseHelper.deleteGroup(groupId);
+      await WearSyncService.instance.syncFromDatabase();
       await _reloadCollections();
       return true;
     } catch (error) {
@@ -120,6 +123,7 @@ class GroupProvider extends ChangeNotifier {
     try {
       final GroupModel? updatedGroup =
           await _databaseHelper.renameGroup(groupId, trimmedName);
+      await WearSyncService.instance.syncFromDatabase();
       await _reloadCollections();
       return updatedGroup;
     } catch (error) {

@@ -41,8 +41,10 @@ android {
     }
 
     applicationVariants.all {
+        val variantName = name
         outputs.all {
-            (this as com.android.build.gradle.internal.api.ApkVariantOutputImpl).outputFileName = "flashlang.apk"
+            (this as com.android.build.gradle.internal.api.ApkVariantOutputImpl).outputFileName =
+                "flashlang-phone-$variantName.apk"
         }
     }
 }
@@ -59,5 +61,6 @@ flutter {
 
 dependencies {
     implementation("androidx.work:work-runtime:2.9.1")
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

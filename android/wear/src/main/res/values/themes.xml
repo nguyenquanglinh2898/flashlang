@@ -1,0 +1,12 @@
+<resources>
+    <style name="Theme.FlashLang" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/flash_blue</item>
+        <item name="colorPrimaryVariant">@color/flash_blue_dark</item>
+        <item name="colorOnPrimary">@color/flash_on_surface</item>
+        <item name="android:colorBackground">@color/flash_surface</item>
+        <item name="colorSurface">@color/flash_surface_variant</item>
+        <item name="colorOnSurface">@color/flash_on_surface</item>
+        <item name="android:textColorPrimary">@color/flash_on_surface</item>
+        <item name="android:textColorSecondary">#C7D2FE</item>
+    </style>
+</resources>

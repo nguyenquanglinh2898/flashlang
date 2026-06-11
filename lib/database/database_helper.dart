@@ -638,6 +638,8 @@ class DatabaseHelper {
       SELECT
         c.id,
         c.word,
+        c.createdAt,
+        c.lastPushedAt,
         c.partOfSpeech,
         c.phonetic,
         c.meaning,
@@ -661,6 +663,8 @@ class DatabaseHelper {
       SELECT
         c.id,
         c.word,
+        c.createdAt,
+        c.lastPushedAt,
         c.partOfSpeech,
         c.phonetic,
         c.meaning,
@@ -674,6 +678,20 @@ class DatabaseHelper {
     ''');
 
     return maps.map(ExportableCardRow.fromMap).toList();
+  }
+
+  Future<Map<String, Object?>> getWearSyncSnapshot() async {
+    final NotificationSettingsModel settings = await getNotificationSettings();
+    final List<GroupWithCount> groups = await getGroupsWithCardCount();
+    final List<ExportableCardRow> cards = await getAllCardsForExport();
+
+    return <String, Object?>{
+      'schemaVersion': 1,
+      'syncedAt': DateTime.now().toIso8601String(),
+      'settings': settings.toWearMap(),
+      'groups': groups.map((GroupWithCount group) => group.toWearMap()).toList(),
+      'cards': cards.map((ExportableCardRow card) => card.toWearMap()).toList(),
+    };
   }
 
   String? _normalizeNullableString(String? value) {
@@ -728,6 +746,16 @@ class NotificationSettingsModel {
       'intervalMinutes': intervalMinutes,
     };
   }
+
+  Map<String, Object?> toWearMap() {
+    return <String, Object?>{
+      'id': id,
+      'pushTimes': pushTimes,
+      'pushCount': pushCount,
+      'scheduleMode': scheduleMode.name,
+      'intervalMinutes': intervalMinutes,
+    };
+  }
 }
 
 enum NotificationScheduleMode {
@@ -753,12 +781,23 @@ class GroupWithCount extends GroupModel {
       cardCount: map['cardCount'] as int? ?? 0,
     );
   }
+
+  Map<String, Object?> toWearMap() {
+    return <String, Object?>{
+      'id': id,
+      'name': name,
+      'createdAt': createdAt.toIso8601String(),
+      'cardCount': cardCount,
+    };
+  }
 }
 
 class ExportableCardRow {
   const ExportableCardRow({
     required this.id,
     required this.word,
+    required this.createdAt,
+    this.lastPushedAt,
     this.partOfSpeech,
     this.phonetic,
     required this.meaning,
@@ -768,6 +807,8 @@ class ExportableCardRow {
 
   final int id;
   final String word;
+  final DateTime createdAt;
+  final DateTime? lastPushedAt;
   final String? partOfSpeech;
   final String? phonetic;
   final String meaning;
@@ -778,6 +819,10 @@ class ExportableCardRow {
     return ExportableCardRow(
       id: map['id'] as int,
       word: map['word'] as String,
+      createdAt: DateTime.parse(map['createdAt'] as String),
+      lastPushedAt: map['lastPushedAt'] == null
+          ? null
+          : DateTime.parse(map['lastPushedAt'] as String),
       partOfSpeech: map['partOfSpeech'] as String?,
       phonetic: map['phonetic'] as String?,
       meaning: map['meaning'] as String,
@@ -795,6 +840,24 @@ class ExportableCardRow {
       imagePath ?? '',
       groups,
     ];
+  }
+
+  Map<String, Object?> toWearMap() {
+    return <String, Object?>{
+      'id': id,
+      'word': word,
+      'createdAt': createdAt.toIso8601String(),
+      'lastPushedAt': lastPushedAt?.toIso8601String(),
+      'partOfSpeech': partOfSpeech,
+      'phonetic': phonetic,
+      'meaning': meaning,
+      'imagePath': imagePath,
+      'groups': groups
+          .split(';')
+          .map((String value) => value.trim())
+          .where((String value) => value.isNotEmpty)
+          .toList(),
+    };
   }
 }
 
