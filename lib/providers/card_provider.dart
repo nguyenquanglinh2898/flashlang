@@ -6,7 +6,7 @@ import '../models/group_model.dart';
 
 class CardProvider extends ChangeNotifier {
   CardProvider({DatabaseHelper? databaseHelper})
-      : _databaseHelper = databaseHelper ?? DatabaseHelper.instance;
+    : _databaseHelper = databaseHelper ?? DatabaseHelper.instance;
 
   final DatabaseHelper _databaseHelper;
 
@@ -58,7 +58,9 @@ class CardProvider extends ChangeNotifier {
         return null;
       }
 
-      final List<GroupModel> groups = await _databaseHelper.getGroupsForCard(cardId);
+      final List<GroupModel> groups = await _databaseHelper.getGroupsForCard(
+        cardId,
+      );
       return CardDetailData(card: card, groups: groups);
     } catch (error) {
       _setError('Failed to get card detail: $error');
@@ -195,15 +197,41 @@ class CardProvider extends ChangeNotifier {
     }
   }
 
+  Future<CardModel?> getMostRecentlyPushedCard() async {
+    _clearError();
+
+    try {
+      return await _databaseHelper.getMostRecentlyPushedCard();
+    } catch (error) {
+      _setError('Failed to get last pushed card: $error');
+      return null;
+    }
+  }
+
+  Future<List<ReviewCardData>> getReviewCards({List<int>? groupIds}) async {
+    _clearError();
+
+    try {
+      return await _databaseHelper.getReviewCards(groupIds: groupIds);
+    } catch (error) {
+      _setError('Failed to load review cards: $error');
+      return <ReviewCardData>[];
+    }
+  }
+
   Future<void> markCardAsPushed(int cardId) async {
     _clearError();
 
     try {
       await _databaseHelper.updateCardLastPushedAt(cardId, DateTime.now());
 
-      final int cardIndex = _cards.indexWhere((CardModel card) => card.id == cardId);
+      final int cardIndex = _cards.indexWhere(
+        (CardModel card) => card.id == cardId,
+      );
       if (cardIndex != -1) {
-        _cards[cardIndex] = _cards[cardIndex].copyWith(lastPushedAt: DateTime.now());
+        _cards[cardIndex] = _cards[cardIndex].copyWith(
+          lastPushedAt: DateTime.now(),
+        );
         notifyListeners();
       }
     } catch (error) {
@@ -240,14 +268,15 @@ class CardProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      final ImportedCardInsertResult result = await _databaseHelper.insertImportedCard(
-        word: word,
-        partOfSpeech: partOfSpeech,
-        phonetic: phonetic,
-        meaning: meaning,
-        imagePath: imagePath,
-        groupNames: groupNames,
-      );
+      final ImportedCardInsertResult result = await _databaseHelper
+          .insertImportedCard(
+            word: word,
+            partOfSpeech: partOfSpeech,
+            phonetic: phonetic,
+            meaning: meaning,
+            imagePath: imagePath,
+            groupNames: groupNames,
+          );
       if (result.isInserted) {
         await _reloadActiveCollection();
       }
@@ -316,10 +345,7 @@ class CardProvider extends ChangeNotifier {
 }
 
 class CardDetailData {
-  const CardDetailData({
-    required this.card,
-    required this.groups,
-  });
+  const CardDetailData({required this.card, required this.groups});
 
   final CardModel card;
   final List<GroupModel> groups;

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -96,23 +97,18 @@ class DatabaseHelper {
       )
     ''');
 
-    await db.insert(
-      notificationSettingsTable,
-      <String, Object?>{
-        'id': 1,
-        'pushTimes': jsonEncode(defaultPushTimes),
-        'pushCount': defaultPushTimes.length,
-        'scheduleMode': NotificationScheduleMode.fixedTimes.name,
-        'intervalMinutes': null,
-      },
-    );
+    await db.insert(notificationSettingsTable, <String, Object?>{
+      'id': 1,
+      'pushTimes': jsonEncode(defaultPushTimes),
+      'pushCount': defaultPushTimes.length,
+      'scheduleMode': NotificationScheduleMode.fixedTimes.name,
+      'intervalMinutes': null,
+    });
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute(
-        'ALTER TABLE $cardsTable ADD COLUMN partOfSpeech TEXT',
-      );
+      await db.execute('ALTER TABLE $cardsTable ADD COLUMN partOfSpeech TEXT');
       await db.execute(
         "ALTER TABLE $notificationSettingsTable ADD COLUMN scheduleMode TEXT NOT NULL DEFAULT 'fixed_times'",
       );
@@ -211,12 +207,15 @@ class DatabaseHelper {
   Future<int> deleteGroup(int groupId) async {
     final Database db = await database;
     return db.transaction<int>((Transaction txn) async {
-      final List<Map<String, Object?>> cardMaps = await txn.rawQuery('''
+      final List<Map<String, Object?>> cardMaps = await txn.rawQuery(
+        '''
         SELECT DISTINCT c.id
         FROM $cardsTable c
         INNER JOIN $cardGroupMappingTable m ON m.cardId = c.id
         WHERE m.groupId = ?
-      ''', <Object?>[groupId]);
+      ''',
+        <Object?>[groupId],
+      );
 
       for (final Map<String, Object?> cardMap in cardMaps) {
         await txn.delete(
@@ -254,9 +253,7 @@ class DatabaseHelper {
 
     final int updatedRows = await db.update(
       cardGroupsTable,
-      <String, Object?>{
-        'name': trimmedName,
-      },
+      <String, Object?>{'name': trimmedName},
       where: 'id = ?',
       whereArgs: <Object?>[groupId],
     );
@@ -309,14 +306,10 @@ class DatabaseHelper {
     );
 
     for (final int groupId in groupIds.toSet()) {
-      await txn.insert(
-        cardGroupMappingTable,
-        <String, Object?>{
-          'cardId': cardId,
-          'groupId': groupId,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      await txn.insert(cardGroupMappingTable, <String, Object?>{
+        'cardId': cardId,
+        'groupId': groupId,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 
@@ -348,26 +341,32 @@ class DatabaseHelper {
 
   Future<List<CardModel>> getCardsByGroupId(int groupId) async {
     final Database db = await database;
-    final List<Map<String, Object?>> maps = await db.rawQuery('''
+    final List<Map<String, Object?>> maps = await db.rawQuery(
+      '''
       SELECT c.*
       FROM $cardsTable c
       INNER JOIN $cardGroupMappingTable m ON m.cardId = c.id
       WHERE m.groupId = ?
       ORDER BY c.createdAt DESC
-    ''', <Object?>[groupId]);
+    ''',
+      <Object?>[groupId],
+    );
 
     return maps.map(CardModel.fromMap).toList();
   }
 
   Future<List<GroupModel>> getGroupsForCard(int cardId) async {
     final Database db = await database;
-    final List<Map<String, Object?>> maps = await db.rawQuery('''
+    final List<Map<String, Object?>> maps = await db.rawQuery(
+      '''
       SELECT g.*
       FROM $cardGroupsTable g
       INNER JOIN $cardGroupMappingTable m ON m.groupId = g.id
       WHERE m.cardId = ?
       ORDER BY g.name COLLATE NOCASE ASC
-    ''', <Object?>[cardId]);
+    ''',
+      <Object?>[cardId],
+    );
 
     return maps.map(GroupModel.fromMap).toList();
   }
@@ -388,11 +387,7 @@ class DatabaseHelper {
 
   Future<int> deleteCard(int cardId) async {
     final Database db = await database;
-    return db.delete(
-      cardsTable,
-      where: 'id = ?',
-      whereArgs: <Object?>[cardId],
-    );
+    return db.delete(cardsTable, where: 'id = ?', whereArgs: <Object?>[cardId]);
   }
 
   Future<void> upsertNotificationSettings({
@@ -420,19 +415,15 @@ class DatabaseHelper {
     );
 
     if (updatedRows == 0) {
-      await db.insert(
-        notificationSettingsTable,
-        <String, Object?>{
-          'id': 1,
-          'pushTimes': jsonEncode(normalizedTimes),
-          'pushCount': normalizedTimes.length,
-          'scheduleMode': scheduleMode.name,
-          'intervalMinutes': scheduleMode == NotificationScheduleMode.interval
-              ? intervalMinutes
-              : null,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert(notificationSettingsTable, <String, Object?>{
+        'id': 1,
+        'pushTimes': jsonEncode(normalizedTimes),
+        'pushCount': normalizedTimes.length,
+        'scheduleMode': scheduleMode.name,
+        'intervalMinutes': scheduleMode == NotificationScheduleMode.interval
+            ? intervalMinutes
+            : null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -444,17 +435,13 @@ class DatabaseHelper {
     );
 
     if (maps.isEmpty) {
-      await db.insert(
-        notificationSettingsTable,
-        <String, Object?>{
-          'id': 1,
-          'pushTimes': jsonEncode(defaultPushTimes),
-          'pushCount': defaultPushTimes.length,
-          'scheduleMode': NotificationScheduleMode.fixedTimes.name,
-          'intervalMinutes': null,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert(notificationSettingsTable, <String, Object?>{
+        'id': 1,
+        'pushTimes': jsonEncode(defaultPushTimes),
+        'pushCount': defaultPushTimes.length,
+        'scheduleMode': NotificationScheduleMode.fixedTimes.name,
+        'intervalMinutes': null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       return NotificationSettingsModel(
         id: 1,
@@ -470,7 +457,9 @@ class DatabaseHelper {
 
   Future<CardModel?> getNextCardForNotification() async {
     final Database db = await database;
-    final DateTime twoDaysAgo = DateTime.now().subtract(const Duration(days: 2));
+    final DateTime twoDaysAgo = DateTime.now().subtract(
+      const Duration(days: 2),
+    );
 
     final List<Map<String, Object?>> eligibleMaps = await db.query(
       cardsTable,
@@ -487,25 +476,64 @@ class DatabaseHelper {
 
     final List<Map<String, Object?>> fallbackMaps = await db.query(
       cardsTable,
-      orderBy:
-          'CASE WHEN lastPushedAt IS NULL THEN 0 ELSE 1 END, lastPushedAt ASC, createdAt ASC, id ASC',
-      limit: 1,
+      columns: <String>['id'],
     );
 
     if (fallbackMaps.isEmpty) {
       return null;
     }
 
-    return CardModel.fromMap(fallbackMaps.first);
+    final List<int> cardIds = fallbackMaps
+        .map((Map<String, Object?> row) => row['id'] as int)
+        .toList(growable: false);
+    final int selectedCardId = cardIds[Random().nextInt(cardIds.length)];
+    return getCardById(selectedCardId);
+  }
+
+  Future<CardModel?> getMostRecentlyPushedCard() async {
+    final Database db = await database;
+    final List<Map<String, Object?>> maps = await db.query(
+      cardsTable,
+      where: 'lastPushedAt IS NOT NULL',
+      orderBy: 'lastPushedAt DESC, createdAt DESC, id DESC',
+      limit: 1,
+    );
+
+    if (maps.isEmpty) {
+      return null;
+    }
+
+    return CardModel.fromMap(maps.first);
+  }
+
+  Future<List<ReviewCardData>> getReviewCards({List<int>? groupIds}) async {
+    final Database db = await database;
+    final List<int> normalizedGroupIds = groupIds ?? <int>[];
+    final bool hasGroupFilter = normalizedGroupIds.isNotEmpty;
+    final String placeholders = hasGroupFilter
+        ? List<String>.filled(normalizedGroupIds.length, '?').join(', ')
+        : '';
+
+    final List<Map<String, Object?>> maps = await db.rawQuery('''
+      SELECT
+        c.*,
+        GROUP_CONCAT(g.name, '||') AS groupNames
+      FROM $cardsTable c
+      LEFT JOIN $cardGroupMappingTable m ON m.cardId = c.id
+      LEFT JOIN $cardGroupsTable g ON g.id = m.groupId
+      ${hasGroupFilter ? 'WHERE c.id IN (SELECT DISTINCT cardId FROM $cardGroupMappingTable WHERE groupId IN ($placeholders))' : ''}
+      GROUP BY c.id
+      ORDER BY c.createdAt DESC, c.id DESC
+      ''', hasGroupFilter ? normalizedGroupIds : null);
+
+    return maps.map(ReviewCardData.fromMap).toList();
   }
 
   Future<void> updateCardLastPushedAt(int cardId, DateTime pushedAt) async {
     final Database db = await database;
     await db.update(
       cardsTable,
-      <String, Object?>{
-        'lastPushedAt': pushedAt.toIso8601String(),
-      },
+      <String, Object?>{'lastPushedAt': pushedAt.toIso8601String()},
       where: 'id = ?',
       whereArgs: <Object?>[cardId],
     );
@@ -524,8 +552,9 @@ class DatabaseHelper {
     return db.transaction<ImportedCardInsertResult>((Transaction txn) async {
       final String normalizedWord = word.trim();
       final String normalizedMeaning = meaning.trim();
-      final String? normalizedPartOfSpeech =
-          _normalizeNullableString(partOfSpeech);
+      final String? normalizedPartOfSpeech = _normalizeNullableString(
+        partOfSpeech,
+      );
       final String? normalizedPhonetic = _normalizeNullableString(phonetic);
       final String? normalizedImagePath = _normalizeNullableString(imagePath);
       final List<String> normalizedGroupNames = groupNames
@@ -554,19 +583,19 @@ class DatabaseHelper {
           continue;
         }
 
-        final int groupId = await txn.insert(
-          cardGroupsTable,
-          <String, Object?>{
-            'name': name,
-            'createdAt': DateTime.now().toIso8601String(),
-          },
-        );
+        final int groupId = await txn.insert(cardGroupsTable, <String, Object?>{
+          'name': name,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
         groupIds.add(groupId);
       }
 
-      final String groupPlaceholders =
-          List<String>.filled(groupIds.length, '?').join(', ');
-      final List<Map<String, Object?>> existingCards = await txn.rawQuery('''
+      final String groupPlaceholders = List<String>.filled(
+        groupIds.length,
+        '?',
+      ).join(', ');
+      final List<Map<String, Object?>> existingCards = await txn.rawQuery(
+        '''
         SELECT DISTINCT c.id
         FROM $cardsTable c
         INNER JOIN $cardGroupMappingTable m ON m.cardId = c.id
@@ -579,13 +608,15 @@ class DatabaseHelper {
           AND m.groupId IN ($groupPlaceholders)
         ORDER BY c.createdAt ASC, c.id ASC
         LIMIT 1
-      ''', <Object?>[
-        normalizedWord.toLowerCase(),
-        normalizedMeaning.toLowerCase(),
-        normalizedPartOfSpeech,
-        normalizedPartOfSpeech,
-        ...groupIds,
-      ]);
+      ''',
+        <Object?>[
+          normalizedWord.toLowerCase(),
+          normalizedMeaning.toLowerCase(),
+          normalizedPartOfSpeech,
+          normalizedPartOfSpeech,
+          ...groupIds,
+        ],
+      );
 
       int cardId;
       bool insertedCard = false;
@@ -609,10 +640,7 @@ class DatabaseHelper {
       for (final int groupId in groupIds) {
         final int mappingId = await txn.insert(
           cardGroupMappingTable,
-          <String, Object?>{
-            'cardId': cardId,
-            'groupId': groupId,
-          },
+          <String, Object?>{'cardId': cardId, 'groupId': groupId},
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );
 
@@ -634,7 +662,8 @@ class DatabaseHelper {
 
   Future<List<ExportableCardRow>> getCardsForExportByGroup(int groupId) async {
     final Database db = await database;
-    final List<Map<String, Object?>> maps = await db.rawQuery('''
+    final List<Map<String, Object?>> maps = await db.rawQuery(
+      '''
       SELECT
         c.id,
         c.word,
@@ -650,7 +679,9 @@ class DatabaseHelper {
       WHERE baseMap.groupId = ?
       GROUP BY c.id
       ORDER BY c.createdAt DESC
-    ''', <Object?>[groupId]);
+    ''',
+      <Object?>[groupId],
+    );
 
     return maps.map(ExportableCardRow.fromMap).toList();
   }
@@ -703,13 +734,16 @@ class NotificationSettingsModel {
 
   factory NotificationSettingsModel.fromMap(Map<String, Object?> map) {
     final String rawScheduleMode =
-        (map['scheduleMode'] as String?) ?? NotificationScheduleMode.fixedTimes.name;
+        (map['scheduleMode'] as String?) ??
+        NotificationScheduleMode.fixedTimes.name;
     final String normalizedScheduleMode = rawScheduleMode == 'fixed_times'
         ? NotificationScheduleMode.fixedTimes.name
         : rawScheduleMode;
     return NotificationSettingsModel(
       id: map['id'] as int,
-      pushTimes: List<String>.from(jsonDecode(map['pushTimes'] as String) as List<dynamic>),
+      pushTimes: List<String>.from(
+        jsonDecode(map['pushTimes'] as String) as List<dynamic>,
+      ),
       pushCount: map['pushCount'] as int,
       scheduleMode: NotificationScheduleMode.values.firstWhere(
         (NotificationScheduleMode mode) => mode.name == normalizedScheduleMode,
@@ -730,10 +764,7 @@ class NotificationSettingsModel {
   }
 }
 
-enum NotificationScheduleMode {
-  fixedTimes,
-  interval,
-}
+enum NotificationScheduleMode { fixedTimes, interval }
 
 class GroupWithCount extends GroupModel {
   const GroupWithCount({
@@ -798,6 +829,25 @@ class ExportableCardRow {
   }
 }
 
+class ReviewCardData {
+  const ReviewCardData({required this.card, required this.groupNames});
+
+  final CardModel card;
+  final List<String> groupNames;
+
+  factory ReviewCardData.fromMap(Map<String, Object?> map) {
+    final String rawGroupNames = (map['groupNames'] as String?) ?? '';
+    return ReviewCardData(
+      card: CardModel.fromMap(map),
+      groupNames: rawGroupNames
+          .split('||')
+          .map((String name) => name.trim())
+          .where((String name) => name.isNotEmpty)
+          .toList(),
+    );
+  }
+}
+
 class ImportedCardInsertResult {
   const ImportedCardInsertResult.inserted({
     required this.insertedCard,
@@ -805,14 +855,14 @@ class ImportedCardInsertResult {
   }) : status = ImportedCardInsertStatus.inserted;
 
   const ImportedCardInsertResult.duplicate()
-      : status = ImportedCardInsertStatus.duplicate,
-        insertedCard = false,
-        insertedGroupMappings = 0;
+    : status = ImportedCardInsertStatus.duplicate,
+      insertedCard = false,
+      insertedGroupMappings = 0;
 
   const ImportedCardInsertResult.invalid()
-      : status = ImportedCardInsertStatus.invalid,
-        insertedCard = false,
-        insertedGroupMappings = 0;
+    : status = ImportedCardInsertStatus.invalid,
+      insertedCard = false,
+      insertedGroupMappings = 0;
 
   final ImportedCardInsertStatus status;
   final bool insertedCard;
@@ -823,8 +873,4 @@ class ImportedCardInsertResult {
   bool get isInvalid => status == ImportedCardInsertStatus.invalid;
 }
 
-enum ImportedCardInsertStatus {
-  inserted,
-  duplicate,
-  invalid,
-}
+enum ImportedCardInsertStatus { inserted, duplicate, invalid }

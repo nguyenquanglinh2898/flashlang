@@ -1,17 +1,17 @@
 import 'package:flutter/foundation.dart';
 
 import '../database/database_helper.dart';
+import '../models/card_model.dart';
 
-typedef SettingsChangedCallback = Future<void> Function(
-  NotificationSettingsModel settings,
-);
+typedef SettingsChangedCallback =
+    Future<void> Function(NotificationSettingsModel settings);
 
 class SettingsProvider extends ChangeNotifier {
   SettingsProvider({
     DatabaseHelper? databaseHelper,
     SettingsChangedCallback? onSettingsChanged,
-  })  : _databaseHelper = databaseHelper ?? DatabaseHelper.instance,
-        _onSettingsChanged = onSettingsChanged;
+  }) : _databaseHelper = databaseHelper ?? DatabaseHelper.instance,
+       _onSettingsChanged = onSettingsChanged;
 
   final DatabaseHelper _databaseHelper;
   final SettingsChangedCallback? _onSettingsChanged;
@@ -19,12 +19,16 @@ class SettingsProvider extends ChangeNotifier {
   List<String> _pushTimes = <String>[];
   NotificationScheduleMode _scheduleMode = NotificationScheduleMode.fixedTimes;
   int? _intervalMinutes;
+  CardModel? _lastPushedCard;
+  CardModel? _nextCardInQueue;
   bool _isLoading = false;
   String? _errorMessage;
 
   List<String> get pushTimes => List<String>.unmodifiable(_pushTimes);
   NotificationScheduleMode get scheduleMode => _scheduleMode;
   int? get intervalMinutes => _intervalMinutes;
+  CardModel? get lastPushedCard => _lastPushedCard;
+  CardModel? get nextCardInQueue => _nextCardInQueue;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get pushCount => _scheduleMode == NotificationScheduleMode.interval
@@ -55,13 +59,7 @@ class SettingsProvider extends ChangeNotifier {
 
       final int hour = int.tryParse(parts[0]) ?? 0;
       final int minute = int.tryParse(parts[1]) ?? 0;
-      DateTime candidate = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        hour,
-        minute,
-      );
+      DateTime candidate = DateTime(now.year, now.month, now.day, hour, minute);
 
       if (!candidate.isAfter(now)) {
         candidate = candidate.add(const Duration(days: 1));
@@ -114,11 +112,17 @@ class SettingsProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      final NotificationSettingsModel settings =
-          await _databaseHelper.getNotificationSettings();
+      final NotificationSettingsModel settings = await _databaseHelper
+          .getNotificationSettings();
+      final CardModel? lastPushedCard = await _databaseHelper
+          .getMostRecentlyPushedCard();
+      final CardModel? nextCardInQueue = await _databaseHelper
+          .getNextCardForNotification();
       _pushTimes = _sortTimes(settings.pushTimes);
       _scheduleMode = settings.scheduleMode;
       _intervalMinutes = settings.intervalMinutes;
+      _lastPushedCard = lastPushedCard;
+      _nextCardInQueue = nextCardInQueue;
       notifyListeners();
     } catch (error) {
       _setError('Failed to load notification settings: $error');
@@ -143,9 +147,10 @@ class SettingsProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      final List<String> updatedTimes = _sortTimes(
-        <String>[..._pushTimes, normalizedTime],
-      );
+      final List<String> updatedTimes = _sortTimes(<String>[
+        ..._pushTimes,
+        normalizedTime,
+      ]);
       await _persistSettings(
         pushTimes: updatedTimes,
         scheduleMode: _scheduleMode,

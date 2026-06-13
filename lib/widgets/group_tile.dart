@@ -9,12 +9,14 @@ class GroupTile extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     required this.onEdit,
+    required this.onReview,
   });
 
   final GroupWithCount group;
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback onReview;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +49,10 @@ class GroupTile extends StatelessWidget {
                   const Spacer(),
                   PopupMenuButton<String>(
                     onSelected: (String value) {
+                      if (value == 'review') {
+                        onReview();
+                        return;
+                      }
                       if (value == 'edit') {
                         onEdit();
                         return;
@@ -54,6 +60,10 @@ class GroupTile extends StatelessWidget {
                       onDelete();
                     },
                     itemBuilder: (_) => const <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(
+                        value: 'review',
+                        child: Text('Review'),
+                      ),
                       PopupMenuItem<String>(
                         value: 'edit',
                         child: Text('Rename'),

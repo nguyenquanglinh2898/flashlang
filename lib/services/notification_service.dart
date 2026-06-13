@@ -20,7 +20,10 @@ const int _androidAlarmIdOffset = 10000;
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
-  Workmanager().executeTask((String task, Map<String, dynamic>? inputData) async {
+  Workmanager().executeTask((
+    String task,
+    Map<String, dynamic>? inputData,
+  ) async {
     WidgetsFlutterBinding.ensureInitialized();
     DartPluginRegistrant.ensureInitialized();
 
@@ -61,10 +64,7 @@ Future<void> flashLangExactAlarmCallback(
 
   final String? time = params['time'] as String?;
   if (time != null && time.trim().isNotEmpty) {
-    await service._scheduleExactAlarmForTime(
-      time,
-      forceTomorrow: true,
-    );
+    await service._scheduleExactAlarmForTime(time, forceTomorrow: true);
   }
 }
 
@@ -110,8 +110,10 @@ class NotificationService {
     await initialize();
 
     final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-        _localNotificationsPlugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        _localNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
     await androidPlugin?.requestNotificationsPermission();
     if (Platform.isAndroid) {
       final bool canScheduleExact =
@@ -122,17 +124,17 @@ class NotificationService {
     }
 
     final IOSFlutterLocalNotificationsPlugin? iosPlugin =
-        _localNotificationsPlugin.resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>();
-    await iosPlugin?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+        _localNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >();
+    await iosPlugin?.requestPermissions(alert: true, badge: true, sound: true);
 
     final MacOSFlutterLocalNotificationsPlugin? macOsPlugin =
-        _localNotificationsPlugin.resolvePlatformSpecificImplementation<
-            MacOSFlutterLocalNotificationsPlugin>();
+        _localNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              MacOSFlutterLocalNotificationsPlugin
+            >();
     await macOsPlugin?.requestPermissions(
       alert: true,
       badge: true,
@@ -160,7 +162,9 @@ class NotificationService {
       return;
     }
 
-    final List<String> normalizedTimes = _normalizeAndSortTimes(settings.pushTimes);
+    final List<String> normalizedTimes = _normalizeAndSortTimes(
+      settings.pushTimes,
+    );
     if (Platform.isAndroid && await _canScheduleExactAlarms()) {
       for (final String time in normalizedTimes) {
         await _scheduleExactAlarmForTime(time);
@@ -175,8 +179,8 @@ class NotificationService {
 
   Future<void> rescheduleFromSettings() async {
     await initialize();
-    final NotificationSettingsModel settings =
-        await DatabaseHelper.instance.getNotificationSettings();
+    final NotificationSettingsModel settings = await DatabaseHelper.instance
+        .getNotificationSettings();
     await scheduleNotifications(settings);
   }
 
@@ -205,8 +209,10 @@ class NotificationService {
     }
 
     final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-        _localNotificationsPlugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        _localNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
 
     final bool canScheduleBefore =
         await androidPlugin?.canScheduleExactNotifications() ?? false;
@@ -221,8 +227,8 @@ class NotificationService {
   Future<void> showRandomCardNotification() async {
     await _initializeLocalNotificationsForBackground();
 
-    final CardModel? card =
-        await DatabaseHelper.instance.getNextCardForNotification();
+    final CardModel? card = await DatabaseHelper.instance
+        .getNextCardForNotification();
     if (card == null || card.id == null) {
       return;
     }
@@ -238,7 +244,10 @@ class NotificationService {
       payload: payload.toJsonString(),
     );
 
-    await DatabaseHelper.instance.updateCardLastPushedAt(card.id!, DateTime.now());
+    await DatabaseHelper.instance.updateCardLastPushedAt(
+      card.id!,
+      DateTime.now(),
+    );
   }
 
   Future<NotificationPayload?> getLaunchPayload() async {
@@ -256,8 +265,9 @@ class NotificationService {
   }
 
   Future<void> handleNotificationResponse(NotificationResponse response) async {
-    final NotificationPayload? payload =
-        NotificationPayload.tryParse(response.payload);
+    final NotificationPayload? payload = NotificationPayload.tryParse(
+      response.payload,
+    );
     if (payload != null) {
       _notificationTapController.add(payload);
     }
@@ -275,9 +285,9 @@ class NotificationService {
 
     const InitializationSettings initializationSettings =
         InitializationSettings(
-      android: androidInitializationSettings,
-      iOS: iosInitializationSettings,
-    );
+          android: androidInitializationSettings,
+          iOS: iosInitializationSettings,
+        );
 
     await _localNotificationsPlugin.initialize(
       initializationSettings,
@@ -300,8 +310,10 @@ class NotificationService {
 
   Future<void> _createNotificationChannel() async {
     final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-        _localNotificationsPlugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        _localNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
 
     await androidPlugin?.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -337,29 +349,26 @@ class NotificationService {
       frequency: const Duration(hours: 24),
       initialDelay: initialDelay,
       existingWorkPolicy: ExistingWorkPolicy.replace,
-      inputData: <String, dynamic>{
-        'time': time,
-      },
-      constraints: Constraints(
-        networkType: NetworkType.not_required,
-      ),
+      inputData: <String, dynamic>{'time': time},
+      constraints: Constraints(networkType: NetworkType.not_required),
     );
   }
 
   Future<void> _registerIntervalNotificationTask(int intervalMinutes) async {
+    final int effectiveIntervalMinutes = intervalMinutes < 15
+        ? 15
+        : intervalMinutes;
     await Workmanager().registerPeriodicTask(
-      'flashlang_notification_interval_$intervalMinutes',
+      'flashlang_notification_interval_$effectiveIntervalMinutes',
       flashLangNotificationTask,
-      frequency: Duration(minutes: intervalMinutes),
-      initialDelay: Duration(minutes: intervalMinutes),
+      frequency: Duration(minutes: effectiveIntervalMinutes),
+      initialDelay: Duration(minutes: effectiveIntervalMinutes),
       existingWorkPolicy: ExistingWorkPolicy.replace,
       inputData: <String, dynamic>{
         'mode': NotificationScheduleMode.interval.name,
-        'intervalMinutes': intervalMinutes,
+        'intervalMinutes': effectiveIntervalMinutes,
       },
-      constraints: Constraints(
-        networkType: NetworkType.not_required,
-      ),
+      constraints: Constraints(networkType: NetworkType.not_required),
     );
   }
 
@@ -413,22 +422,13 @@ class NotificationService {
     );
   }
 
-  DateTime _nextRunForTime(
-    String time, {
-    bool forceTomorrow = false,
-  }) {
+  DateTime _nextRunForTime(String time, {bool forceTomorrow = false}) {
     final List<String> parts = time.split(':');
     final int hour = int.tryParse(parts[0]) ?? 0;
     final int minute = int.tryParse(parts[1]) ?? 0;
 
     final DateTime now = DateTime.now();
-    DateTime nextRun = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
+    DateTime nextRun = DateTime(now.year, now.month, now.day, hour, minute);
 
     if (forceTomorrow || !nextRun.isAfter(now)) {
       nextRun = nextRun.add(const Duration(days: 1));
@@ -454,17 +454,21 @@ class NotificationService {
       await AndroidAlarmManager.cancel(_androidAlarmIdOffset + minutes);
     }
 
-    for (int intervalMinutes = 1; intervalMinutes <= 24 * 60; intervalMinutes++) {
-      await AndroidAlarmManager.cancel(
-        _alarmIdForInterval(intervalMinutes),
-      );
+    for (
+      int intervalMinutes = 1;
+      intervalMinutes <= 24 * 60;
+      intervalMinutes++
+    ) {
+      await AndroidAlarmManager.cancel(_alarmIdForInterval(intervalMinutes));
     }
   }
 
   Future<bool> _canScheduleExactAlarms() async {
     final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-        _localNotificationsPlugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        _localNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
     return await androidPlugin?.canScheduleExactNotifications() ?? false;
   }
 
@@ -474,13 +478,7 @@ class NotificationService {
     final int minute = int.tryParse(parts[1]) ?? 0;
 
     final DateTime now = DateTime.now();
-    DateTime nextRun = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
+    DateTime nextRun = DateTime(now.year, now.month, now.day, hour, minute);
 
     if (!nextRun.isAfter(now)) {
       nextRun = nextRun.add(const Duration(days: 1));
@@ -496,7 +494,9 @@ class NotificationService {
         .toSet();
 
     final List<String> sortedTimes = uniqueTimes.toList()
-      ..sort((String a, String b) => _timeToMinutes(a).compareTo(_timeToMinutes(b)));
+      ..sort(
+        (String a, String b) => _timeToMinutes(a).compareTo(_timeToMinutes(b)),
+      );
     return sortedTimes;
   }
 

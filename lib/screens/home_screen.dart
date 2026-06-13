@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../database/database_helper.dart';
 import '../models/group_model.dart';
+import '../providers/card_provider.dart';
 import '../providers/group_provider.dart';
 import '../widgets/group_tile.dart';
 import 'card_list_screen.dart';
 import 'data_screen.dart';
+import 'review_setup_screen.dart';
+import 'review_session_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -97,9 +101,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -113,12 +117,26 @@ class _HomeGroupsView extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: const Text('FlashLang'),
+            actions: <Widget>[
+              IconButton(
+                tooltip: 'Review',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ReviewSetupScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.school_outlined),
+              ),
+            ],
           ),
           body: RefreshIndicator(
             onRefresh: groupProvider.loadGroupsWithCount,
             child: Builder(
               builder: (BuildContext context) {
-                if (groupProvider.isLoading && groupProvider.groupsWithCount.isEmpty) {
+                if (groupProvider.isLoading &&
+                    groupProvider.groupsWithCount.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
@@ -135,7 +153,8 @@ class _HomeGroupsView extends StatelessWidget {
                   return const _StatusView(
                     icon: Icons.style_outlined,
                     title: 'No groups yet',
-                    message: 'Create your first flashcard group to get started.',
+                    message:
+                        'Create your first flashcard group to get started.',
                   );
                 }
 
@@ -154,7 +173,9 @@ class _HomeGroupsView extends StatelessWidget {
                       group: group,
                       onEdit: () =>
                           _showRenameGroupDialog(context, group.id, group.name),
-                      onDelete: () => _confirmDeleteGroup(context, group.id, group.name),
+                      onDelete: () =>
+                          _confirmDeleteGroup(context, group.id, group.name),
+                      onReview: () => _openGroupReview(context, group),
                       onTap: () async {
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -180,6 +201,35 @@ class _HomeGroupsView extends StatelessWidget {
     );
   }
 
+  Future<void> _openGroupReview(
+    BuildContext context,
+    GroupWithCount group,
+  ) async {
+    if (group.id == null) {
+      return;
+    }
+
+    final List<ReviewCardData> reviewCards = await context
+        .read<CardProvider>()
+        .getReviewCards(groupIds: <int>[group.id!]);
+    if (!context.mounted) {
+      return;
+    }
+
+    if (reviewCards.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No cards found in "${group.name}".')),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReviewSessionScreen(cards: reviewCards),
+      ),
+    );
+  }
+
   Future<void> _confirmDeleteGroup(
     BuildContext context,
     int? groupId,
@@ -189,7 +239,8 @@ class _HomeGroupsView extends StatelessWidget {
       return;
     }
 
-    final bool confirmed = await showDialog<bool>(
+    final bool confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (BuildContext dialogContext) {
             return AlertDialog(
@@ -233,11 +284,9 @@ class _HomeGroupsView extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Deleted "$groupName".'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Deleted "$groupName".')));
   }
 
   Future<void> _showRenameGroupDialog(
@@ -251,10 +300,8 @@ class _HomeGroupsView extends StatelessWidget {
 
     final String? updatedName = await showDialog<String>(
       context: context,
-      builder: (BuildContext context) => _CreateGroupDialog(
-        title: 'Rename Group',
-        initialValue: currentName,
-      ),
+      builder: (BuildContext context) =>
+          _CreateGroupDialog(title: 'Rename Group', initialValue: currentName),
     );
 
     if (!context.mounted || updatedName == null || updatedName.trim().isEmpty) {
@@ -262,7 +309,10 @@ class _HomeGroupsView extends StatelessWidget {
     }
 
     final GroupProvider groupProvider = context.read<GroupProvider>();
-    final GroupModel? group = await groupProvider.renameGroup(groupId, updatedName);
+    final GroupModel? group = await groupProvider.renameGroup(
+      groupId,
+      updatedName,
+    );
     if (!context.mounted) {
       return;
     }
@@ -270,15 +320,17 @@ class _HomeGroupsView extends StatelessWidget {
     if (group == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(groupProvider.errorMessage ?? 'Unable to rename group.'),
+          content: Text(
+            groupProvider.errorMessage ?? 'Unable to rename group.',
+          ),
         ),
       );
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Group updated.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Group updated.')));
   }
 }
 

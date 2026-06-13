@@ -33,9 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Consumer<SettingsProvider>(
       builder: (BuildContext context, SettingsProvider settingsProvider, _) {
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Settings'),
-          ),
+          appBar: AppBar(title: const Text('Settings')),
           body: RefreshIndicator(
             onRefresh: settingsProvider.loadSettings,
             child: ListView(
@@ -43,9 +41,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: <Widget>[
                 Text(
                   'Push Notification Times',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -54,8 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 20),
                 SegmentedButton<NotificationScheduleMode>(
-                  segments:
-                      const <ButtonSegment<NotificationScheduleMode>>[
+                  segments: const <ButtonSegment<NotificationScheduleMode>>[
                     ButtonSegment<NotificationScheduleMode>(
                       value: NotificationScheduleMode.fixedTimes,
                       label: Text('Specific Times'),
@@ -95,8 +92,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ? '${settingsProvider.intervalMinutes ?? 60}m'
                           : '${settingsProvider.pushCount}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
@@ -105,26 +102,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ListTile(
                     leading: const Icon(Icons.update_rounded),
                     title: const Text('Next notification'),
-                    subtitle: Text(settingsProvider.nextScheduledNotificationLabel),
+                    subtitle: Text(
+                      _buildNextNotificationLabel(settingsProvider),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.history_rounded),
+                    title: const Text('Last pushed card'),
+                    subtitle: Text(
+                      settingsProvider.lastPushedCard == null
+                          ? 'No card has been pushed yet.'
+                          : _buildLastPushedLabel(settingsProvider),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
                 if (settingsProvider.isFixedTimesMode)
                   FilledButton.icon(
-                    onPressed: settingsProvider.isLoading ? null : _pickAndAddTime,
+                    onPressed: settingsProvider.isLoading
+                        ? null
+                        : _pickAndAddTime,
                     icon: const Icon(Icons.add_alarm_rounded),
                     label: const Text('Add Time'),
                   )
                 else
                   FilledButton.icon(
-                    onPressed: settingsProvider.isLoading ? null : _editInterval,
+                    onPressed: settingsProvider.isLoading
+                        ? null
+                        : _editInterval,
                     icon: const Icon(Icons.timer_outlined),
                     label: const Text('Set Interval'),
                   ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed:
-                      settingsProvider.isLoading ? null : _sendTestNotification,
+                  onPressed: settingsProvider.isLoading
+                      ? null
+                      : _sendTestNotification,
                   icon: const Icon(Icons.notification_add_outlined),
                   label: const Text('Send Test Notification'),
                 ),
@@ -150,7 +166,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const _SettingsStatusView(
                     icon: Icons.schedule_outlined,
                     title: 'No push times configured',
-                    message: 'Add at least one time to receive flashcard reminders.',
+                    message:
+                        'Add at least one time to receive flashcard reminders.',
                   )
                 else
                   ...settingsProvider.pushTimes.map(
@@ -208,28 +225,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _sendTestNotification() async {
+    final SettingsProvider settingsProvider = context.read<SettingsProvider>();
+
     try {
       await NotificationService.instance.showRandomCardNotification();
+      await settingsProvider.loadSettings();
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Test notification sent.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Test notification sent.')));
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to send test notification: $error'),
-        ),
+        SnackBar(content: Text('Failed to send test notification: $error')),
       );
     }
+  }
+
+  String _buildLastPushedLabel(SettingsProvider settingsProvider) {
+    final card = settingsProvider.lastPushedCard;
+    if (card == null) {
+      return 'No card has been pushed yet.';
+    }
+
+    final DateTime? pushedAt = card.lastPushedAt;
+    if (pushedAt == null) {
+      return card.notificationTitle;
+    }
+
+    final String hh = pushedAt.hour.toString().padLeft(2, '0');
+    final String mm = pushedAt.minute.toString().padLeft(2, '0');
+    final String dd = pushedAt.day.toString().padLeft(2, '0');
+    final String mo = pushedAt.month.toString().padLeft(2, '0');
+    return '${card.notificationTitle}\n$hh:$mm on $dd/$mo';
+  }
+
+  String _buildNextNotificationLabel(SettingsProvider settingsProvider) {
+    final card = settingsProvider.nextCardInQueue;
+    final String timeLabel = settingsProvider.nextScheduledNotificationLabel;
+
+    if (card == null && timeLabel == 'Not scheduled') {
+      return 'No cards available for notification.';
+    }
+
+    if (card == null) {
+      return timeLabel;
+    }
+
+    if (timeLabel == 'Not scheduled') {
+      return card.notificationTitle;
+    }
+
+    return '${card.notificationTitle}\n$timeLabel';
   }
 
   Future<void> _changeMode(NotificationScheduleMode mode) async {
@@ -273,8 +326,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(int.tryParse(controller.text.trim())),
+              onPressed: () => Navigator.of(
+                context,
+              ).pop(int.tryParse(controller.text.trim())),
               child: const Text('Save'),
             ),
           ],
@@ -365,7 +419,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<bool> _removeTime(String time) async {
-    final bool confirmed = await showDialog<bool>(
+    final bool confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
