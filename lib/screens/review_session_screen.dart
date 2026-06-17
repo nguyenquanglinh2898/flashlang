@@ -7,11 +7,19 @@ import '../database/database_helper.dart';
 import '../models/card_model.dart';
 import '../services/tts_service.dart';
 import '../widgets/confirm_dialog.dart';
+import 'review_setup_screen.dart';
 
 class ReviewSessionScreen extends StatefulWidget {
-  const ReviewSessionScreen({super.key, required this.cards});
+  const ReviewSessionScreen({
+    super.key,
+    required this.cards,
+    required this.optionPool,
+    required this.mode,
+  });
 
   final List<ReviewCardData> cards;
+  final List<ReviewCardData> optionPool;
+  final ReviewMode mode;
 
   @override
   State<ReviewSessionScreen> createState() => _ReviewSessionScreenState();
@@ -20,6 +28,8 @@ class ReviewSessionScreen extends StatefulWidget {
 class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
   late final List<_ReviewQuestion> _questions;
   final List<_ReviewAnswerRecord> _answers = <_ReviewAnswerRecord>[];
+  final TextEditingController _typedAnswerController = TextEditingController();
+
   int _currentIndex = 0;
   bool _showAnswer = false;
   String? _selectedAnswer;
@@ -31,13 +41,23 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
   }
 
   @override
+  void dispose() {
+    _typedAnswerController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final _ReviewQuestion currentQuestion = _questions[_currentIndex];
     final double progress = (_currentIndex + 1) / _questions.length;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Review Session'),
+        title: Text(
+          widget.mode == ReviewMode.englishToVietnamese
+              ? 'Review Session'
+              : 'Reverse Review',
+        ),
         actions: <Widget>[
           TextButton(onPressed: _finishReview, child: const Text('Finish')),
         ],
@@ -68,12 +88,20 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
                         key: const ValueKey<String>('answer'),
                         question: currentQuestion,
                         selectedAnswer: _selectedAnswer,
+                        mode: widget.mode,
                       )
-                    : _ReviewQuestionCard(
-                        key: const ValueKey<String>('question'),
+                    : widget.mode == ReviewMode.englishToVietnamese
+                    ? _MultipleChoiceQuestionCard(
+                        key: const ValueKey<String>('mcq'),
                         question: currentQuestion,
                         selectedAnswer: _selectedAnswer,
                         onAnswerSelected: _handleAnswerSelection,
+                      )
+                    : _TypedQuestionCard(
+                        key: const ValueKey<String>('typed'),
+                        question: currentQuestion,
+                        controller: _typedAnswerController,
+                        onSubmit: _handleTypedSubmission,
                       ),
               ),
             ),
@@ -92,11 +120,24 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
                       : 'Tiếp theo',
                 ),
               )
-            else
+            else if (widget.mode == ReviewMode.englishToVietnamese)
               FilledButton.icon(
                 onPressed: null,
                 icon: const Icon(Icons.touch_app_rounded),
                 label: const Text('Chọn một đáp án'),
+              )
+            else
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _typedAnswerController,
+                builder: (_, TextEditingValue value, __) {
+                  return FilledButton.icon(
+                    onPressed: value.text.trim().isEmpty
+                        ? null
+                        : _handleTypedSubmission,
+                    icon: const Icon(Icons.send_rounded),
+                    label: const Text('Trả lời'),
+                  );
+                },
               ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
@@ -120,8 +161,9 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
 
   _ReviewQuestion _cardToQuestion(ReviewCardData item) {
     final Random random = Random();
+    final Set<String> optionSet = <String>{item.card.meaning.trim()};
     final List<String> distractors =
-        widget.cards
+        widget.optionPool
             .where((ReviewCardData other) => other.card.id != item.card.id)
             .map((ReviewCardData other) => other.card.meaning.trim())
             .where((String meaning) => meaning.isNotEmpty)
@@ -129,7 +171,6 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
             .toList()
           ..shuffle(random);
 
-    final Set<String> optionSet = <String>{item.card.meaning.trim()};
     for (final String distractor in distractors) {
       if (optionSet.length >= 6) {
         break;
@@ -153,7 +194,27 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
 
     final _ReviewQuestion question = _questions[_currentIndex];
     final bool isCorrect = selectedAnswer == question.correctAnswer;
+    _recordAnswer(selectedAnswer: selectedAnswer, isCorrect: isCorrect);
+  }
 
+  void _handleTypedSubmission() {
+    if (_showAnswer) {
+      return;
+    }
+
+    final _ReviewQuestion question = _questions[_currentIndex];
+    final String selectedAnswer = _typedAnswerController.text.trim();
+    final bool isCorrect =
+        _normalizeAnswer(selectedAnswer) ==
+        _normalizeAnswer(question.item.card.word);
+    _recordAnswer(selectedAnswer: selectedAnswer, isCorrect: isCorrect);
+  }
+
+  void _recordAnswer({
+    required String selectedAnswer,
+    required bool isCorrect,
+  }) {
+    final _ReviewQuestion question = _questions[_currentIndex];
     _answers.add(
       _ReviewAnswerRecord(
         question: question,
@@ -178,6 +239,7 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
       _currentIndex++;
       _showAnswer = false;
       _selectedAnswer = null;
+      _typedAnswerController.clear();
     });
   }
 
@@ -207,14 +269,19 @@ class _ReviewSessionScreenState extends State<ReviewSessionScreen> {
         builder: (_) => _ReviewResultScreen(
           totalQuestions: _questions.length,
           answers: List<_ReviewAnswerRecord>.unmodifiable(_answers),
+          mode: widget.mode,
         ),
       ),
     );
   }
+
+  String _normalizeAnswer(String value) {
+    return value.trim().toLowerCase();
+  }
 }
 
-class _ReviewQuestionCard extends StatelessWidget {
-  const _ReviewQuestionCard({
+class _MultipleChoiceQuestionCard extends StatelessWidget {
+  const _MultipleChoiceQuestionCard({
     super.key,
     required this.question,
     required this.selectedAnswer,
@@ -302,20 +369,100 @@ class _ReviewQuestionCard extends StatelessWidget {
   }
 }
 
+class _TypedQuestionCard extends StatelessWidget {
+  const _TypedQuestionCard({
+    super.key,
+    required this.question,
+    required this.controller,
+    required this.onSubmit,
+  });
+
+  final _ReviewQuestion question;
+  final TextEditingController controller;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final CardModel card = question.item.card;
+
+    return Card(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              card.meaning,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            if (card.hasImage) ...<Widget>[
+              const SizedBox(height: 18),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  width: double.infinity,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Image.file(
+                    File(card.imagePath!),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) {
+                      return Container(
+                        height: 160,
+                        alignment: Alignment.center,
+                        child: const Text('Image not available'),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 18),
+            Text(
+              'Gõ từ tiếng Anh',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              textCapitalization: TextCapitalization.none,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'English word',
+                hintText: 'Type your answer',
+              ),
+              onSubmitted: (_) => onSubmit(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ReviewAnswerCard extends StatelessWidget {
   const _ReviewAnswerCard({
     super.key,
     required this.question,
     required this.selectedAnswer,
+    required this.mode,
   });
 
   final _ReviewQuestion question;
   final String? selectedAnswer;
+  final ReviewMode mode;
 
   @override
   Widget build(BuildContext context) {
     final CardModel card = question.item.card;
-    final bool isCorrect = selectedAnswer == question.correctAnswer;
+    final bool isCorrect = mode == ReviewMode.englishToVietnamese
+        ? selectedAnswer == question.correctAnswer
+        : selectedAnswer?.trim().toLowerCase() ==
+              card.word.trim().toLowerCase();
 
     return Card(
       child: SingleChildScrollView(
@@ -344,12 +491,13 @@ class _ReviewAnswerCard extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              card.word,
+              mode == ReviewMode.englishToVietnamese ? card.word : card.meaning,
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
-            if (card.hasPhonetic) ...<Widget>[
+            if (mode == ReviewMode.englishToVietnamese &&
+                card.hasPhonetic) ...<Widget>[
               const SizedBox(height: 8),
               Text(
                 card.phonetic!,
@@ -363,7 +511,9 @@ class _ReviewAnswerCard extends StatelessWidget {
             const SizedBox(height: 10),
             _AnswerInfoTile(
               label: 'Đáp án đúng',
-              value: question.correctAnswer,
+              value: mode == ReviewMode.englishToVietnamese
+                  ? question.correctAnswer
+                  : card.word,
               highlight: true,
             ),
             if (card.hasImage) ...<Widget>[
@@ -450,10 +600,12 @@ class _ReviewResultScreen extends StatelessWidget {
   const _ReviewResultScreen({
     required this.totalQuestions,
     required this.answers,
+    required this.mode,
   });
 
   final int totalQuestions;
   final List<_ReviewAnswerRecord> answers;
+  final ReviewMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +684,9 @@ class _ReviewResultScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            answer.question.item.card.word,
+                            mode == ReviewMode.englishToVietnamese
+                                ? answer.question.item.card.word
+                                : answer.question.item.card.meaning,
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
@@ -540,7 +694,7 @@ class _ReviewResultScreen extends StatelessWidget {
                           Text('Your answer: ${answer.selectedAnswer}'),
                           const SizedBox(height: 6),
                           Text(
-                            'Correct answer: ${answer.question.correctAnswer}',
+                            'Correct answer: ${mode == ReviewMode.englishToVietnamese ? answer.question.correctAnswer : answer.question.item.card.word}',
                           ),
                         ],
                       ),

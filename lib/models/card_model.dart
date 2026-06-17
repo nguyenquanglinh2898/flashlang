@@ -8,6 +8,7 @@ class CardModel {
     this.imagePath,
     required this.createdAt,
     this.lastPushedAt,
+    this.isMastered = false,
   });
 
   final int? id;
@@ -18,6 +19,7 @@ class CardModel {
   final String? imagePath;
   final DateTime createdAt;
   final DateTime? lastPushedAt;
+  final bool isMastered;
 
   factory CardModel.fromMap(Map<String, Object?> map) {
     return CardModel(
@@ -31,6 +33,7 @@ class CardModel {
       lastPushedAt: map['lastPushedAt'] == null
           ? null
           : DateTime.parse(map['lastPushedAt'] as String),
+      isMastered: ((map['isMastered'] as int?) ?? 0) == 1,
     );
   }
 
@@ -44,6 +47,7 @@ class CardModel {
       'imagePath': _normalizeNullableString(imagePath),
       'createdAt': createdAt.toIso8601String(),
       'lastPushedAt': lastPushedAt?.toIso8601String(),
+      'isMastered': isMastered ? 1 : 0,
     };
   }
 
@@ -60,11 +64,14 @@ class CardModel {
     DateTime? createdAt,
     DateTime? lastPushedAt,
     bool clearLastPushedAt = false,
+    bool? isMastered,
   }) {
     return CardModel(
       id: id ?? this.id,
       word: word ?? this.word,
-      partOfSpeech: clearPartOfSpeech ? null : (partOfSpeech ?? this.partOfSpeech),
+      partOfSpeech: clearPartOfSpeech
+          ? null
+          : (partOfSpeech ?? this.partOfSpeech),
       phonetic: clearPhonetic ? null : (phonetic ?? this.phonetic),
       meaning: meaning ?? this.meaning,
       imagePath: clearImagePath ? null : (imagePath ?? this.imagePath),
@@ -72,6 +79,7 @@ class CardModel {
       lastPushedAt: clearLastPushedAt
           ? null
           : (lastPushedAt ?? this.lastPushedAt),
+      isMastered: isMastered ?? this.isMastered,
     );
   }
 
@@ -145,18 +153,20 @@ class CardModel {
         other.meaning == meaning &&
         other.imagePath == imagePath &&
         other.createdAt == createdAt &&
-        other.lastPushedAt == lastPushedAt;
+        other.lastPushedAt == lastPushedAt &&
+        other.isMastered == isMastered;
   }
 
   @override
   int get hashCode => Object.hash(
-        id,
-        word,
-        partOfSpeech,
-        phonetic,
-        meaning,
-        imagePath,
-        createdAt,
-        lastPushedAt,
-      );
+    id,
+    word,
+    partOfSpeech,
+    phonetic,
+    meaning,
+    imagePath,
+    createdAt,
+    lastPushedAt,
+    isMastered,
+  );
 }

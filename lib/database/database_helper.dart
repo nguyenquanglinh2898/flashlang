@@ -12,7 +12,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const String _databaseName = 'flash_lang.db';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
 
   static const String cardGroupsTable = 'card_groups';
   static const String cardsTable = 'cards';
@@ -73,7 +73,8 @@ class DatabaseHelper {
         meaning TEXT NOT NULL,
         imagePath TEXT,
         createdAt TEXT NOT NULL,
-        lastPushedAt TEXT
+        lastPushedAt TEXT,
+        isMastered INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -93,7 +94,10 @@ class DatabaseHelper {
         pushTimes TEXT NOT NULL,
         pushCount INTEGER NOT NULL DEFAULT 8,
         scheduleMode TEXT NOT NULL DEFAULT 'fixed_times',
-        intervalMinutes INTEGER
+        intervalMinutes INTEGER,
+        quietHoursEnabled INTEGER NOT NULL DEFAULT 0,
+        quietHoursStart TEXT,
+        quietHoursEnd TEXT
       )
     ''');
 
@@ -103,6 +107,9 @@ class DatabaseHelper {
       'pushCount': defaultPushTimes.length,
       'scheduleMode': NotificationScheduleMode.fixedTimes.name,
       'intervalMinutes': null,
+      'quietHoursEnabled': 0,
+      'quietHoursStart': null,
+      'quietHoursEnd': null,
     });
   }
 
@@ -122,6 +129,21 @@ class DatabaseHelper {
         },
         where: 'scheduleMode IS NULL OR scheduleMode = ?',
         whereArgs: <Object?>[''],
+      );
+    }
+
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE $cardsTable ADD COLUMN isMastered INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE $notificationSettingsTable ADD COLUMN quietHoursEnabled INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE $notificationSettingsTable ADD COLUMN quietHoursStart TEXT',
+      );
+      await db.execute(
+        'ALTER TABLE $notificationSettingsTable ADD COLUMN quietHoursEnd TEXT',
       );
     }
   }
@@ -394,6 +416,9 @@ class DatabaseHelper {
     required List<String> pushTimes,
     required NotificationScheduleMode scheduleMode,
     int? intervalMinutes,
+    required bool quietHoursEnabled,
+    String? quietHoursStart,
+    String? quietHoursEnd,
   }) async {
     final Database db = await database;
     final List<String> normalizedTimes = List<String>.from(pushTimes)
@@ -408,6 +433,9 @@ class DatabaseHelper {
         'intervalMinutes': scheduleMode == NotificationScheduleMode.interval
             ? intervalMinutes
             : null,
+        'quietHoursEnabled': quietHoursEnabled ? 1 : 0,
+        'quietHoursStart': quietHoursEnabled ? quietHoursStart : null,
+        'quietHoursEnd': quietHoursEnabled ? quietHoursEnd : null,
       },
       where: 'id = ?',
       whereArgs: const <Object?>[1],
@@ -423,6 +451,9 @@ class DatabaseHelper {
         'intervalMinutes': scheduleMode == NotificationScheduleMode.interval
             ? intervalMinutes
             : null,
+        'quietHoursEnabled': quietHoursEnabled ? 1 : 0,
+        'quietHoursStart': quietHoursEnabled ? quietHoursStart : null,
+        'quietHoursEnd': quietHoursEnabled ? quietHoursEnd : null,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
@@ -441,6 +472,9 @@ class DatabaseHelper {
         'pushCount': defaultPushTimes.length,
         'scheduleMode': NotificationScheduleMode.fixedTimes.name,
         'intervalMinutes': null,
+        'quietHoursEnabled': 0,
+        'quietHoursStart': null,
+        'quietHoursEnd': null,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       return NotificationSettingsModel(
@@ -449,6 +483,9 @@ class DatabaseHelper {
         pushCount: defaultPushTimes.length,
         scheduleMode: NotificationScheduleMode.fixedTimes,
         intervalMinutes: null,
+        quietHoursEnabled: false,
+        quietHoursStart: null,
+        quietHoursEnd: null,
       );
     }
 
@@ -463,7 +500,7 @@ class DatabaseHelper {
 
     final List<Map<String, Object?>> eligibleMaps = await db.query(
       cardsTable,
-      where: 'lastPushedAt IS NULL OR lastPushedAt < ?',
+      where: 'isMastered = 0 AND (lastPushedAt IS NULL OR lastPushedAt < ?)',
       whereArgs: <Object?>[twoDaysAgo.toIso8601String()],
       orderBy:
           'CASE WHEN lastPushedAt IS NULL THEN 0 ELSE 1 END, lastPushedAt ASC, createdAt ASC, id ASC',
@@ -477,6 +514,7 @@ class DatabaseHelper {
     final List<Map<String, Object?>> fallbackMaps = await db.query(
       cardsTable,
       columns: <String>['id'],
+      where: 'isMastered = 0',
     );
 
     if (fallbackMaps.isEmpty) {
@@ -534,6 +572,16 @@ class DatabaseHelper {
     await db.update(
       cardsTable,
       <String, Object?>{'lastPushedAt': pushedAt.toIso8601String()},
+      where: 'id = ?',
+      whereArgs: <Object?>[cardId],
+    );
+  }
+
+  Future<void> updateCardMastered(int cardId, bool isMastered) async {
+    final Database db = await database;
+    await db.update(
+      cardsTable,
+      <String, Object?>{'isMastered': isMastered ? 1 : 0},
       where: 'id = ?',
       whereArgs: <Object?>[cardId],
     );
@@ -724,6 +772,9 @@ class NotificationSettingsModel {
     required this.pushCount,
     required this.scheduleMode,
     this.intervalMinutes,
+    required this.quietHoursEnabled,
+    this.quietHoursStart,
+    this.quietHoursEnd,
   });
 
   final int id;
@@ -731,6 +782,9 @@ class NotificationSettingsModel {
   final int pushCount;
   final NotificationScheduleMode scheduleMode;
   final int? intervalMinutes;
+  final bool quietHoursEnabled;
+  final String? quietHoursStart;
+  final String? quietHoursEnd;
 
   factory NotificationSettingsModel.fromMap(Map<String, Object?> map) {
     final String rawScheduleMode =
@@ -750,6 +804,9 @@ class NotificationSettingsModel {
         orElse: () => NotificationScheduleMode.fixedTimes,
       ),
       intervalMinutes: map['intervalMinutes'] as int?,
+      quietHoursEnabled: ((map['quietHoursEnabled'] as int?) ?? 0) == 1,
+      quietHoursStart: map['quietHoursStart'] as String?,
+      quietHoursEnd: map['quietHoursEnd'] as String?,
     );
   }
 
@@ -760,6 +817,9 @@ class NotificationSettingsModel {
       'pushCount': pushCount,
       'scheduleMode': scheduleMode.name,
       'intervalMinutes': intervalMinutes,
+      'quietHoursEnabled': quietHoursEnabled ? 1 : 0,
+      'quietHoursStart': quietHoursStart,
+      'quietHoursEnd': quietHoursEnd,
     };
   }
 }

@@ -156,6 +156,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onTap: settingsProvider.isLoading ? null : _editInterval,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: SwitchListTile(
+                      secondary: const Icon(Icons.bedtime_outlined),
+                      title: const Text('Quiet hours'),
+                      subtitle: Text(
+                        settingsProvider.quietHoursEnabled
+                            ? 'Pause notifications from ${settingsProvider.quietHoursStart ?? '--:--'} to ${settingsProvider.quietHoursEnd ?? '--:--'}.'
+                            : 'Pause interval notifications during sleep hours.',
+                      ),
+                      value: settingsProvider.quietHoursEnabled,
+                      onChanged: settingsProvider.isLoading
+                          ? null
+                          : _toggleQuietHours,
+                    ),
+                  ),
+                  if (settingsProvider.quietHoursEnabled) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.nightlight_round),
+                        title: const Text('Quiet hours start'),
+                        subtitle: Text(
+                          settingsProvider.quietHoursStart ??
+                              'Select start time',
+                        ),
+                        onTap: settingsProvider.isLoading
+                            ? null
+                            : () => _pickQuietHoursTime(isStart: true),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.wb_sunny_outlined),
+                        title: const Text('Quiet hours end'),
+                        subtitle: Text(
+                          settingsProvider.quietHoursEnd ?? 'Select end time',
+                        ),
+                        onTap: settingsProvider.isLoading
+                            ? null
+                            : () => _pickQuietHoursTime(isStart: false),
+                      ),
+                    ),
+                  ],
                 ] else if (settingsProvider.isLoading &&
                     settingsProvider.pushTimes.isEmpty)
                   const Padding(
@@ -464,6 +509,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     return true;
+  }
+
+  Future<void> _toggleQuietHours(bool enabled) async {
+    final SettingsProvider settingsProvider = context.read<SettingsProvider>();
+    bool success;
+
+    if (!enabled) {
+      success = await settingsProvider.updateQuietHours(enabled: false);
+    } else {
+      String? start = settingsProvider.quietHoursStart ?? '22:00';
+      String? end = settingsProvider.quietHoursEnd ?? '07:00';
+
+      final TimeOfDay? startTime = await showTimePicker(
+        context: context,
+        initialTime:
+            _parseTimeOfDay(start) ?? const TimeOfDay(hour: 22, minute: 0),
+      );
+      if (!mounted || startTime == null) {
+        return;
+      }
+      start = _formatTimeOfDay(startTime);
+
+      final TimeOfDay? endTime = await showTimePicker(
+        context: context,
+        initialTime:
+            _parseTimeOfDay(end) ?? const TimeOfDay(hour: 7, minute: 0),
+      );
+      if (!mounted || endTime == null) {
+        return;
+      }
+      end = _formatTimeOfDay(endTime);
+
+      success = await settingsProvider.updateQuietHours(
+        enabled: true,
+        start: start,
+        end: end,
+      );
+    }
+
+    if (!mounted || success) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          settingsProvider.errorMessage ?? 'Failed to update quiet hours.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickQuietHoursTime({required bool isStart}) async {
+    final SettingsProvider settingsProvider = context.read<SettingsProvider>();
+    final String? currentValue = isStart
+        ? settingsProvider.quietHoursStart
+        : settingsProvider.quietHoursEnd;
+    final TimeOfDay initialTime =
+        _parseTimeOfDay(currentValue) ?? TimeOfDay.now();
+
+    final TimeOfDay? selectedTime = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+    );
+
+    if (!mounted || selectedTime == null) {
+      return;
+    }
+
+    final String newValue = _formatTimeOfDay(selectedTime);
+    final bool success = await settingsProvider.updateQuietHours(
+      enabled: true,
+      start: isStart ? newValue : settingsProvider.quietHoursStart ?? '22:00',
+      end: isStart ? settingsProvider.quietHoursEnd ?? '07:00' : newValue,
+    );
+
+    if (!mounted || success) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          settingsProvider.errorMessage ?? 'Failed to update quiet hours.',
+        ),
+      ),
+    );
+  }
+
+  TimeOfDay? _parseTimeOfDay(String? value) {
+    if (value == null) {
+      return null;
+    }
+
+    final List<String> parts = value.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+
+    final int? hour = int.tryParse(parts[0]);
+    final int? minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final String hour = time.hour.toString().padLeft(2, '0');
+    final String minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 }
 

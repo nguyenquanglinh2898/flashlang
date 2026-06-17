@@ -223,9 +223,20 @@ class _HomeGroupsView extends StatelessWidget {
       return;
     }
 
+    final List<ReviewCardData> optionPool = await context
+        .read<CardProvider>()
+        .getReviewCards();
+    if (!context.mounted) {
+      return;
+    }
+
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ReviewSessionScreen(cards: reviewCards),
+        builder: (_) => ReviewSessionScreen(
+          cards: reviewCards,
+          optionPool: optionPool.isEmpty ? reviewCards : optionPool,
+          mode: ReviewMode.englishToVietnamese,
+        ),
       ),
     );
   }

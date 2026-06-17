@@ -8,6 +8,7 @@ import '../models/card_model.dart';
 import '../models/group_model.dart';
 import '../providers/card_provider.dart';
 import '../providers/group_provider.dart';
+import '../services/phonetic_service.dart';
 import '../widgets/multi_select_group.dart';
 
 class AddEditCardScreen extends StatefulWidget {
@@ -52,6 +53,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
 
   bool _isSaving = false;
   bool _isLoadingInitialData = false;
+  bool _isFetchingPhonetic = false;
   List<int> _selectedGroupIds = <int>[];
   String? _selectedPartOfSpeech;
   String? _imagePath;
@@ -85,9 +87,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
     final GroupProvider groupProvider = context.watch<GroupProvider>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isEdit ? 'Edit Card' : 'Add Card'),
-      ),
+      appBar: AppBar(title: Text(widget.isEdit ? 'Edit Card' : 'Add Card')),
       body: _isLoadingInitialData
           ? const Center(child: CircularProgressIndicator())
           : Form(
@@ -111,7 +111,8 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: _partOfSpeechOptions.contains(_selectedPartOfSpeech)
+                    initialValue:
+                        _partOfSpeechOptions.contains(_selectedPartOfSpeech)
                         ? _selectedPartOfSpeech
                         : null,
                     decoration: const InputDecoration(
@@ -141,6 +142,21 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                       hintText: 'Example: /ˈae.pəl/',
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _isFetchingPhonetic ? null : _autoFillPhonetic,
+                      icon: _isFetchingPhonetic
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_fix_high_rounded),
+                      label: const Text('Auto-fill phonetic'),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _meaningController,
@@ -160,8 +176,8 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                   Text(
                     'Image',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   if (_imagePath != null)
@@ -170,16 +186,18 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                       child: Container(
                         constraints: const BoxConstraints(maxHeight: 280),
                         width: double.infinity,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         child: Image.file(
                           File(_imagePath!),
                           fit: BoxFit.contain,
                           errorBuilder: (_, __, ___) => Container(
                             height: 140,
                             alignment: Alignment.center,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             child: const Text('Image not available'),
                           ),
                         ),
@@ -189,7 +207,9 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                     Container(
                       height: 160,
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       alignment: Alignment.center,
@@ -203,7 +223,9 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                       FilledButton.icon(
                         onPressed: _pickImage,
                         icon: const Icon(Icons.image_outlined),
-                        label: Text(_imagePath == null ? 'Choose Image' : 'Change Image'),
+                        label: Text(
+                          _imagePath == null ? 'Choose Image' : 'Change Image',
+                        ),
                       ),
                       if (_imagePath != null)
                         OutlinedButton.icon(
@@ -227,8 +249,9 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
                       });
                     },
                     onCreateGroup: (String name) async {
-                      final GroupModel? group =
-                          await context.read<GroupProvider>().addGroup(name);
+                      final GroupModel? group = await context
+                          .read<GroupProvider>()
+                          .addGroup(name);
                       if (group != null && mounted) {
                         await context.read<GroupProvider>().loadGroups();
                       }
@@ -263,7 +286,9 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
     try {
       final CardProvider cardProvider = context.read<CardProvider>();
       final CardModel? card = await cardProvider.getCardById(widget.cardId!);
-      final List<int> groupIds = await cardProvider.getSelectedGroupIds(widget.cardId!);
+      final List<int> groupIds = await cardProvider.getSelectedGroupIds(
+        widget.cardId!,
+      );
 
       if (!mounted || card == null) {
         return;
@@ -290,7 +315,9 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
   }
 
   Future<void> _pickImage() async {
-    final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
+    final XFile? image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+    );
     if (image == null || !mounted) {
       return;
     }
@@ -312,13 +339,24 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
     try {
       final CardProvider cardProvider = context.read<CardProvider>();
       final List<int> groupIds = _selectedGroupIds.toSet().toList();
+      String phonetic = _phoneticController.text.trim();
+      if (phonetic.isEmpty) {
+        phonetic =
+            await PhoneticService.instance.fetchPhonetic(
+              _wordController.text.trim(),
+            ) ??
+            '';
+        if (mounted && phonetic.isNotEmpty) {
+          _phoneticController.text = phonetic;
+        }
+      }
 
       if (widget.isEdit) {
         final bool success = await cardProvider.updateCard(
           cardId: widget.cardId!,
           word: _wordController.text.trim(),
           partOfSpeech: _partOfSpeechController.text.trim(),
-          phonetic: _phoneticController.text.trim(),
+          phonetic: phonetic,
           meaning: _meaningController.text.trim(),
           imagePath: _imagePath,
           groupIds: groupIds,
@@ -338,7 +376,7 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
         final int? cardId = await cardProvider.addCard(
           word: _wordController.text.trim(),
           partOfSpeech: _partOfSpeechController.text.trim(),
-          phonetic: _phoneticController.text.trim(),
+          phonetic: phonetic,
           meaning: _meaningController.text.trim(),
           imagePath: _imagePath,
           groupIds: groupIds,
@@ -368,9 +406,44 @@ class _AddEditCardScreenState extends State<AddEditCardScreen> {
     }
   }
 
+  Future<void> _autoFillPhonetic() async {
+    final String word = _wordController.text.trim();
+    if (word.isEmpty) {
+      _showMessage('Enter a word first.');
+      return;
+    }
+
+    setState(() {
+      _isFetchingPhonetic = true;
+    });
+
+    try {
+      final String? phonetic = await PhoneticService.instance.fetchPhonetic(
+        word,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      if (phonetic == null || phonetic.isEmpty) {
+        _showMessage('Could not generate phonetic for this word.');
+        return;
+      }
+
+      _phoneticController.text = phonetic;
+      _showMessage('Phonetic generated.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetchingPhonetic = false;
+        });
+      }
+    }
+  }
+
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

@@ -239,6 +239,25 @@ class CardProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateMasteredStatus(int cardId, bool isMastered) async {
+    _clearError();
+
+    try {
+      await _databaseHelper.updateCardMastered(cardId, isMastered);
+      final int cardIndex = _cards.indexWhere(
+        (CardModel card) => card.id == cardId,
+      );
+      if (cardIndex != -1) {
+        _cards[cardIndex] = _cards[cardIndex].copyWith(isMastered: isMastered);
+        notifyListeners();
+      }
+      return true;
+    } catch (error) {
+      _setError('Failed to update mastered status: $error');
+      return false;
+    }
+  }
+
   Future<void> importCardRow({
     required String word,
     String? partOfSpeech,

@@ -18,9 +18,15 @@ class ReviewSetupScreen extends StatefulWidget {
   State<ReviewSetupScreen> createState() => _ReviewSetupScreenState();
 }
 
+enum ReviewMode {
+  englishToVietnamese,
+  vietnameseToEnglish,
+}
+
 class _ReviewSetupScreenState extends State<ReviewSetupScreen> {
   final Set<int> _selectedGroupIds = <int>{};
   bool _isLoadingCards = false;
+  ReviewMode _reviewMode = ReviewMode.englishToVietnamese;
 
   @override
   void initState() {
@@ -60,6 +66,27 @@ class _ReviewSetupScreenState extends State<ReviewSetupScreen> {
                 Text(
                   'We will shuffle all cards from the selected groups and show one card at a time.',
                   style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 20),
+                SegmentedButton<ReviewMode>(
+                  segments: const <ButtonSegment<ReviewMode>>[
+                    ButtonSegment<ReviewMode>(
+                      value: ReviewMode.englishToVietnamese,
+                      label: Text('EN -> VI'),
+                      icon: Icon(Icons.quiz_outlined),
+                    ),
+                    ButtonSegment<ReviewMode>(
+                      value: ReviewMode.vietnameseToEnglish,
+                      label: Text('VI -> EN'),
+                      icon: Icon(Icons.keyboard_outlined),
+                    ),
+                  ],
+                  selected: <ReviewMode>{_reviewMode},
+                  onSelectionChanged: (Set<ReviewMode> selection) {
+                    setState(() {
+                      _reviewMode = selection.first;
+                    });
+                  },
                 ),
                 const SizedBox(height: 20),
                 Card(
@@ -191,6 +218,7 @@ class _ReviewSetupScreenState extends State<ReviewSetupScreen> {
       final reviewCards = await context.read<CardProvider>().getReviewCards(
         groupIds: _selectedGroupIds.toList(),
       );
+      final optionCards = await context.read<CardProvider>().getReviewCards();
       if (!mounted) {
         return;
       }
@@ -202,7 +230,11 @@ class _ReviewSetupScreenState extends State<ReviewSetupScreen> {
 
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ReviewSessionScreen(cards: reviewCards),
+          builder: (_) => ReviewSessionScreen(
+            cards: reviewCards,
+            optionPool: optionCards.isEmpty ? reviewCards : optionCards,
+            mode: _reviewMode,
+          ),
         ),
       );
     } finally {

@@ -5,15 +5,13 @@ import 'package:provider/provider.dart';
 
 import '../providers/card_provider.dart';
 import '../providers/group_provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/tts_service.dart';
 import '../widgets/confirm_dialog.dart';
 import 'add_edit_card_screen.dart';
 
 class CardDetailScreen extends StatefulWidget {
-  const CardDetailScreen({
-    super.key,
-    required this.cardId,
-  });
+  const CardDetailScreen({super.key, required this.cardId});
 
   final int cardId;
 
@@ -37,9 +35,7 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Card Detail'),
-      ),
+      appBar: AppBar(title: const Text('Card Detail')),
       body: Builder(
         builder: (BuildContext context) {
           if (_isLoading && _detail == null) {
@@ -70,9 +66,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                     Expanded(
                       child: Text(
                         card.word,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                     ),
                     IconButton.filledTonal(
@@ -86,22 +81,20 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                   Text(
                     card.phonetic!,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ],
                 if (card.hasPartOfSpeech) ...<Widget>[
                   const SizedBox(height: 12),
-                  Chip(
-                    label: Text(card.partOfSpeech!),
-                  ),
+                  Chip(label: Text(card.partOfSpeech!)),
                 ],
                 const SizedBox(height: 20),
                 Text(
                   'Meaning',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -113,8 +106,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                   Text(
                     'Image',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   ClipRRect(
@@ -122,7 +115,9 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                     child: Container(
                       constraints: const BoxConstraints(maxHeight: 360),
                       width: double.infinity,
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: Image.file(
                         File(card.imagePath!),
                         fit: BoxFit.contain,
@@ -130,9 +125,9 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                           return Container(
                             height: 180,
                             alignment: Alignment.center,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             child: const Text('Image not available'),
                           );
                         },
@@ -144,8 +139,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                 Text(
                   'Groups',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (_detail!.groups.isEmpty)
@@ -158,6 +153,18 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                         .map((group) => Chip(label: Text(group.name)))
                         .toList(),
                   ),
+                const SizedBox(height: 24),
+                Card(
+                  child: CheckboxListTile(
+                    value: card.isMastered,
+                    onChanged: (bool? value) => _toggleMastered(value ?? false),
+                    title: const Text('Đã thuộc'),
+                    subtitle: const Text(
+                      'Checked cards will be excluded from push notifications.',
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ),
                 const SizedBox(height: 32),
                 Row(
                   children: <Widget>[
@@ -166,7 +173,8 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                         onPressed: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => AddEditCardScreen(cardId: widget.cardId),
+                              builder: (_) =>
+                                  AddEditCardScreen(cardId: widget.cardId),
                             ),
                           );
 
@@ -197,14 +205,39 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
     );
   }
 
+  Future<void> _toggleMastered(bool isMastered) async {
+    final bool success = await context
+        .read<CardProvider>()
+        .updateMasteredStatus(widget.cardId, isMastered);
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.read<CardProvider>().errorMessage ??
+                'Failed to update mastered status.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await context.read<SettingsProvider>().loadSettings();
+    await _loadCardDetail();
+  }
+
   Future<void> _loadCardDetail() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
-    final CardDetailData? detail =
-        await context.read<CardProvider>().getCardDetail(widget.cardId);
+    final CardDetailData? detail = await context
+        .read<CardProvider>()
+        .getCardDetail(widget.cardId);
 
     if (!mounted) {
       return;
@@ -230,7 +263,9 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
       return;
     }
 
-    final bool deleted = await context.read<CardProvider>().deleteCard(widget.cardId);
+    final bool deleted = await context.read<CardProvider>().deleteCard(
+      widget.cardId,
+    );
     if (!mounted) {
       return;
     }

@@ -227,6 +227,12 @@ class NotificationService {
   Future<void> showRandomCardNotification() async {
     await _initializeLocalNotificationsForBackground();
 
+    final NotificationSettingsModel settings = await DatabaseHelper.instance
+        .getNotificationSettings();
+    if (_shouldSuppressForQuietHours(settings)) {
+      return;
+    }
+
     final CardModel? card = await DatabaseHelper.instance
         .getNextCardForNotification();
     if (card == null || card.id == null) {
@@ -248,6 +254,31 @@ class NotificationService {
       card.id!,
       DateTime.now(),
     );
+  }
+
+  bool _shouldSuppressForQuietHours(NotificationSettingsModel settings) {
+    if (settings.scheduleMode != NotificationScheduleMode.interval ||
+        !settings.quietHoursEnabled ||
+        (settings.quietHoursStart ?? '').isEmpty ||
+        (settings.quietHoursEnd ?? '').isEmpty) {
+      return false;
+    }
+
+    final int? startMinutes = _tryTimeToMinutes(settings.quietHoursStart!);
+    final int? endMinutes = _tryTimeToMinutes(settings.quietHoursEnd!);
+    if (startMinutes == null || endMinutes == null) {
+      return false;
+    }
+
+    final DateTime now = DateTime.now();
+    final int currentMinutes = (now.hour * 60) + now.minute;
+    final bool crossesMidnight = startMinutes > endMinutes;
+
+    if (crossesMidnight) {
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
   }
 
   Future<NotificationPayload?> getLaunchPayload() async {
@@ -523,6 +554,21 @@ class NotificationService {
     final List<String> parts = time.split(':');
     final int hour = int.tryParse(parts[0]) ?? 0;
     final int minute = int.tryParse(parts[1]) ?? 0;
+    return (hour * 60) + minute;
+  }
+
+  int? _tryTimeToMinutes(String time) {
+    final List<String> parts = time.split(':');
+    if (parts.length != 2) {
+      return null;
+    }
+
+    final int? hour = int.tryParse(parts[0]);
+    final int? minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+
     return (hour * 60) + minute;
   }
 
